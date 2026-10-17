@@ -18,7 +18,13 @@ after a reconnect led the legacy bot to cancel the stop-loss orders of all 20 op
 5. A stop order is only cancelled once the position it protects is confirmed closed, or (for
    orphans) after it was seen without position for ``orphan_confirmation_cycles`` runs. A stop of
    a symbol the broker reports as held is never cancelled.
-6. Every deviation is reported as a :class:`Discrepancy`; nothing is overwritten silently.
+6. Every deviation is reported as a :class:`Discrepancy`; nothing is overwritten silently -
+   including a local stop price that differs from the stop actually working at the broker.
+7. Orders the bot does not own - placed by another API client id (TWS only lets the owner
+   modify or cancel them) or without one of the bot's order references - are never modified or
+   cancelled. They are reported (symbol, order id, client id) and still count as protection, so
+   no second stop is placed next to them (incident 13.-16.10.2026: stops placed by the repair
+   script with client id 50 could not be trailed by the bot's client id 11).
 """
 
 from __future__ import annotations
@@ -74,10 +80,11 @@ class DiscrepancyKind(StrEnum):
     UNTRACKED_FOREIGN = "untracked_foreign_position"
     MISSING_STOP = "missing_stop"
     STOP_QUANTITY_MISMATCH = "stop_quantity_mismatch"
-    STOP_TRAILED = "stop_trailed"
     DUPLICATE_STOPS = "duplicate_stops"
     ORPHAN_ORDER = "orphan_order"
     ORPHAN_CANCELLED = "orphan_order_cancelled"
+    FOREIGN_CLIENT_ORDER = "foreign_client_order"
+    STOP_PRICE_MISMATCH = "stop_price_mismatch"
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,6 +155,8 @@ class ModifyStop:
     order_ref: str
     reason: str
 
+
+STOP_TOLERANCE = 0.005  # stop prices are tick-rounded to cents
 
 type Action = UpdatePosition | AdoptPosition | ClosePosition | CancelOrder | PlaceStop | ModifyStop
 DESTRUCTIVE = (ClosePosition, CancelOrder)
@@ -260,9 +269,31 @@ class _Planner:
             return None
         return fill
 
+    def managed(self, order: BrokerOrder) -> bool:
+        """Whether the bot may modify/cancel ``order`` (own reference and own client id)."""
+        return order.order_ref in self.d.order_refs and not self.snap.is_foreign(order)
+
+    def report_foreign(self, order: BrokerOrder, local: str, resolution: str) -> None:
+        client = order.client_id if order.client_id is not None else "unknown"
+        self.report(
+            DiscrepancyKind.FOREIGN_CLIENT_ORDER,
+            Severity.WARNING,
+            order.symbol,
+            local,
+            f"{order.action} {order.order_type} #{order.order_id} {_fmt_qty(order.qty)}"
+            f"{f' @ {order.aux_price}' if order.aux_price is not None else ''} "
+            f"placed by client id {client} (bot: {self.snap.client_id}, ref {order.order_ref!r})",
+            resolution,
+        )
+
     def cancel_leftovers(self, symbol: str, reason: str) -> None:
         for order in self.snap.orders_for(symbol):
-            self.act(CancelOrder(order, reason))
+            if self.managed(order):
+                self.act(CancelOrder(order, reason))
+            else:
+                self.report_foreign(
+                    order, "position closed", "not cancelled (foreign order) - cancel it in TWS"
+                )
 
     # -------------------------------------------------------------- phases
     def run(self) -> ReconciliationPlan:
@@ -500,6 +531,9 @@ class _Planner:
         for order in self.snap.orders:
             if order.symbol in self.held or order.symbol in tracked:
                 continue
+            if not self.managed(order):
+                self.report_foreign(order, "no position", "never cancelled by the bot")
+                continue
             if order.action is not OrderAction.SELL:
                 self.report(
                     DiscrepancyKind.ORPHAN_ORDER,
@@ -537,10 +571,20 @@ class _Planner:
         for symbol, p in sorted(self.protect.items()):
             qty = abs(self.held[symbol].qty)
             ref = self.d.block_refs[p.block]
-            stops = self.snap.stops_for(symbol)
+            all_stops = self.snap.stops_for(symbol)
+            own = [o for o in all_stops if self.managed(o)]
+            foreign = [o for o in all_stops if not self.managed(o)]
             low = self.d.lows.get(symbol)
             new_low = round(low, 2) if low is not None and math.isfinite(low) else None
-            if not stops:
+
+            for order in foreign:
+                self.report_foreign(
+                    order,
+                    f"position {_fmt_qty(qty)}, stop {p.stop}",
+                    "never modified or cancelled by the bot (stop not trailed); cancel it in TWS"
+                    " so the bot can place its own stop",
+                )
+            if not all_stops:
                 price = max(new_low, p.stop) if new_low is not None else p.stop
                 self.report(
                     DiscrepancyKind.MISSING_STOP,
@@ -552,18 +596,24 @@ class _Planner:
                 )
                 self.act(PlaceStop(symbol, p.block, qty, price, ref))
                 continue
-            if len(stops) > 1:
+            if not own:
+                # Protected only by foreign stops: keep them, do not add a second stop.
+                stop = max(foreign, key=lambda o: o.aux_price or 0.0)
+                self._sync_local_stop(p, stop, stop.aux_price or 0.0, stop_order_id=p.stop_order_id)
+                continue
+
+            if len(all_stops) > 1:
                 self.report(
                     DiscrepancyKind.DUPLICATE_STOPS,
                     Severity.WARNING,
                     symbol,
                     f"stop #{p.stop_order_id}",
-                    ", ".join(f"#{o.order_id} @ {o.aux_price}" for o in stops),
-                    "kept all; managing the known/highest one",
+                    ", ".join(f"#{o.order_id} @ {o.aux_price}" for o in all_stops),
+                    "kept all; managing the bot's own known/highest one",
                 )
             stop = next(
-                (o for o in stops if o.order_id == p.stop_order_id),
-                max(stops, key=lambda o: o.aux_price or 0.0),
+                (o for o in own if o.order_id == p.stop_order_id),
+                max(own, key=lambda o: o.aux_price or 0.0),
             )
             current = stop.aux_price or 0.0
             price, reasons = current, []
@@ -581,12 +631,30 @@ class _Planner:
                     "stop quantity adjusted",
                 )
             # Persist the expected local state first; the executor may still replace the stop id
-            # afterwards (e.g. when TWS rejects the modification and a new stop is placed).
-            synced = p.evolve(stop=price, stop_order_id=stop.order_id)
-            if synced != p:
-                self._merge_update(synced)
+            # afterwards (cancel-and-replace after a rejected modification).
+            self._sync_local_stop(p, stop, price, stop_order_id=stop.order_id)
             if reasons:
                 self.act(ModifyStop(stop, symbol, p.block, qty, price, ref, "; ".join(reasons)))
+
+    def _sync_local_stop(
+        self, p: Position, broker_stop: BrokerOrder, new_price: float, *, stop_order_id: int | None
+    ) -> None:
+        """Align the local stop with the broker, reporting any difference explicitly."""
+        working = broker_stop.aux_price or 0.0
+        if abs(p.stop - working) > STOP_TOLERANCE:
+            origin = " (unconfirmed, imported from legacy state)" if not p.stop_confirmed else ""
+            self.report(
+                DiscrepancyKind.STOP_PRICE_MISMATCH,
+                Severity.WARNING,
+                p.symbol,
+                f"stop {p.stop}{origin}",
+                f"working stop #{broker_stop.order_id} @ {working}",
+                f"local stop set to the broker's value {working}"
+                + (f", then trailed to {new_price}" if new_price != working else ""),
+            )
+        synced = p.evolve(stop=new_price, stop_order_id=stop_order_id, stop_confirmed=True)
+        if synced != p:
+            self._merge_update(synced)
 
     def _merge_update(self, position: Position) -> None:
         """Replace an earlier UpdatePosition/AdoptPosition of the same symbol or add one."""

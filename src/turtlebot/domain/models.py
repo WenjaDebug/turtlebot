@@ -78,6 +78,8 @@ class Position:
         stop_order_id: Broker id of the protective stop.
         missing_cycles: Consecutive reconciliations in which the broker did not report the
             position. Used to require confirmation before treating it as closed.
+        stop_confirmed: ``False`` while ``stop`` is an unverified value (e.g. imported from the
+            legacy state file) that has not yet been compared with the broker's stop order.
         id: Primary key in the store (``None`` before insertion).
     """
 
@@ -93,6 +95,7 @@ class Position:
     stop_order_id: int | None = None
     signal_time: dt.datetime | None = None
     missing_cycles: int = 0
+    stop_confirmed: bool = True
     exit_price: float | None = None
     closed_at: dt.datetime | None = None
     close_reason: str | None = None
@@ -119,7 +122,13 @@ class BrokerPosition:
 
 @dataclass(frozen=True, slots=True)
 class BrokerOrder:
-    """An open (working) order as reported by the broker."""
+    """An open (working) order as reported by the broker.
+
+    Attributes:
+        client_id: API client id that placed the order. TWS only lets the owning client id
+            modify or cancel an order; ``None`` if the broker did not report it.
+        perm_id: Broker-wide permanent id (order ids are only unique per client id).
+    """
 
     order_id: int
     symbol: str
@@ -130,6 +139,8 @@ class BrokerOrder:
     aux_price: float | None = None
     parent_id: int | None = None
     filled: float = 0.0
+    client_id: int | None = None
+    perm_id: int | None = None
 
     @property
     def is_stop(self) -> bool:
@@ -143,16 +154,31 @@ class BrokerSnapshot:
 
     Attributes:
         positions: Non-zero positions keyed by symbol.
-        orders: Working orders carrying one of the bot's order references.
+        orders: Working orders of all API clients that carry one of the bot's order references,
+            plus any other protective SELL stop on a held symbol.
         positions_synced: ``False`` if the broker has not confirmed the end of the position
             stream (e.g. right after a reconnect). Reconciliation never acts on such snapshots.
         taken_at: Timestamp of the snapshot.
+        client_id: The bot's own API client id.
     """
 
     positions: dict[str, BrokerPosition]
     orders: list[BrokerOrder]
     positions_synced: bool
     taken_at: dt.datetime
+    client_id: int | None = None
+
+    def is_foreign(self, order: BrokerOrder) -> bool:
+        """Whether ``order`` was placed by another API client id than the bot's.
+
+        Only decidable if both ids are known; unknown ids are treated as own (the executor
+        still refuses unconfirmed replacements, see the reconciliation service).
+        """
+        return (
+            order.client_id is not None
+            and self.client_id is not None
+            and order.client_id != self.client_id
+        )
 
     def orders_for(self, symbol: str) -> list[BrokerOrder]:
         """All working orders of one symbol."""

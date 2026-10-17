@@ -166,6 +166,12 @@ class ReconciliationSettings(BaseModel):
     )
     mass_disappearance_min_count: int = Field(2, ge=1)
     orphan_confirmation_cycles: int = Field(2, ge=1)
+    cancel_confirm_timeout_s: float = Field(
+        10.0,
+        gt=0,
+        description="How long to wait for TWS to confirm the cancellation of a stop that is "
+        "being replaced. Without confirmation no replacement is placed.",
+    )
 
 
 class PathSettings(BaseModel):

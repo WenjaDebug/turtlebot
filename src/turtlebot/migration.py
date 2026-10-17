@@ -1,7 +1,8 @@
 """One-off import of the legacy JSON state and CSV journal into the SQLite store.
 
 * ``live_turtle_state.json`` -> active (pending/open) positions. The legacy state file is the
-  authority for what is currently held.
+  authority for what is currently held, but **not** for stop prices: they are imported as
+  unconfirmed and checked against the live TWS stop orders in the first reconciliation.
 * ``live_turtle_journal.csv`` -> events (full history) and closed trades.
 
 Closed trades are reconstructed from FILL/EXIT pairs. EXIT rows without price written by the
@@ -87,6 +88,9 @@ def _active_positions(state: dict[str, Any]) -> list[Position]:
                 parent_order_id=p.get("parent_id"),
                 stop_order_id=p.get("stop_id"),
                 signal_time=dt.datetime.fromisoformat(signal_time) if signal_time else None,
+                # The legacy bot stored the *intended* stop even when TWS rejected the
+                # modification (13.-16.10.2026) - verify against TWS before trusting it.
+                stop_confirmed=False,
             )
         )
     return result

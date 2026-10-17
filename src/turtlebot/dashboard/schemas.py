@@ -18,6 +18,17 @@ class ReconciliationSummary(BaseModel):
     message: str | None
 
 
+class StopAlert(BaseModel):
+    """A stop order problem that needs the user's attention."""
+
+    kind: Literal["foreign_client_order", "stop_price_mismatch", "stop_replace_failed"]
+    symbol: str | None
+    order_id: int | None
+    client_id: int | None
+    message: str
+    ts: dt.datetime
+
+
 class BotStatus(BaseModel):
     """Liveness of the trading engine."""
 
@@ -27,6 +38,7 @@ class BotStatus(BaseModel):
     trading_enabled: bool
     demo: bool
     last_reconciliation: ReconciliationSummary | None
+    alerts: list[StopAlert] = Field(default_factory=list)
 
 
 class AccountView(BaseModel):
@@ -101,6 +113,8 @@ class PositionView(BaseModel):
     risk_to_stop: float | None
     days_held: int | None
     missing_cycles: int
+    stop_confirmed: bool
+    stop_alert: str | None = Field(None, description="Foreign stop owner or price mismatch")
 
 
 class TradeView(BaseModel):

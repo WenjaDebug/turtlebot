@@ -42,6 +42,21 @@ function renderStatus(o) {
   }
 
   const banner = $("#banner");
+  const alerts = s.alerts || [];
+  if (alerts.length) {
+    banner.hidden = false;
+    banner.dataset.level = "bad";
+    const foreign = alerts.filter((a) => a.kind === "foreign_client_order").length;
+    const failed = alerts.filter((a) => a.kind === "stop_replace_failed").length;
+    const head = [
+      foreign ? `${foreign} stop order${foreign > 1 ? "s" : ""} owned by another client id` : "",
+      failed ? `${failed} failed stop replacement${failed > 1 ? "s" : ""}` : "",
+    ].filter(Boolean).join(" · ") || `${alerts.length} stop mismatch${alerts.length > 1 ? "es" : ""}`;
+    banner.innerHTML = `<strong>Stop orders need attention: ${esc(head)}.</strong>
+      <ul class="alerts">${alerts.slice(0, 12).map((a) => `<li>${esc(a.message)}</li>`).join("")}</ul>`;
+    return;
+  }
+  delete banner.dataset.level;
   if (s.demo) {
     banner.hidden = false;
     banner.innerHTML = "<strong>Demo mode.</strong> All figures are synthetic and generated for illustration.";
@@ -105,6 +120,8 @@ function renderPositions(rows) {
         p.status === "pending" ? '<span class="tag">pending</span>' : "",
         p.missing_cycles ? `<span class="tag tag--bad" title="Not reported by the broker in ${p.missing_cycles} reconciliation(s)">unconfirmed</span>` : "",
         p.quote_stale && p.status === "open" ? '<span class="tag tag--warn" title="No live quote, valued at entry">no quote</span>' : "",
+        p.stop_alert ? `<span class="tag tag--bad" title="See the stop alerts above">${esc(p.stop_alert)}</span>` : "",
+        !p.stop_confirmed && !p.stop_alert ? '<span class="tag tag--warn" title="Imported stop not yet compared with TWS">stop unverified</span>' : "",
       ].join("");
       const pnl = isNum(p.unrealized_pnl)
         ? `<span class="${tone(p.unrealized_pnl)}">${pct(p.unrealized_pct, { signed: true })}</span> <span class="muted">${money(p.unrealized_pnl, { signed: true })}</span>`
@@ -186,6 +203,7 @@ const KIND_LABEL = {
   ORDER: "Order", FILL: "Fill", PARTIAL_FILL: "Partial fill", EXIT: "Exit", PARTIAL_EXIT: "Partial exit",
   CANCEL: "Cancel", SKIP: "Skipped", STOP_NEW: "New stop", STOP_UPDATE: "Stop trailed",
   STOP_LOST: "Stop lost", ADOPT: "Adopted", UNIVERSE: "Universe",
+  STOP_REPLACE_FAILED: "Stop replace failed", FOREIGN_ORDER: "Foreign order",
 };
 
 function describe(e) {
@@ -195,7 +213,8 @@ function describe(e) {
   if (e.symbol) bits.push(`<strong>${esc(e.symbol)}</strong>`);
   if (isNum(e.price)) bits.push(`@ ${price(e.price)}`);
   if (isNum(e.stop) && e.kind.startsWith("STOP")) bits.push(`stop ${price(e.stop)}`);
-  const extra = d.change || d.reason || d.legacy || (isNum(d.return) ? `return ${pct(d.return, { signed: true })}` : "") ||
+  const extra = d.change || d.reason || d.legacy || d.error ||
+    (isNum(d.client_id) ? `client id ${d.client_id}` : "") || (isNum(d.return) ? `return ${pct(d.return, { signed: true })}` : "") ||
     (d.size ? `${d.size} eligible tickers` : "");
   return `${bits.join(" ")}${extra ? ` <span class="muted">· ${esc(extra)}</span>` : ""}`;
 }

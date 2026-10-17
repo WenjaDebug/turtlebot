@@ -86,7 +86,9 @@ Design principles:
 
 On 12.10.2026 the legacy bot reconnected to TWS and received an empty position list before TWS had finished syncing. Its reconciliation took that at face value: it "forgot" all 20 open positions **and cancelled their stop-loss orders**, leaving the positions unprotected.
 
-The new design prevents this structurally:
+A second, related problem followed: the stops re-placed by the repair script belonged to API client id 50, so from 13.10. on every attempt of the bot (client id 11) to trail them was rejected by TWS (error 103) while the legacy state recorded the intended prices.
+
+The new design prevents both structurally:
 
 1. **Local source of truth.** Positions, orders, stops and every event live in SQLite (`var/turtlebot.db`, WAL mode). Nothing is rewritten wholesale; each change is a transaction.
 2. **Reconciliation is a plan, not a side effect.** `reconciliation/planner.py` compares the store with a broker snapshot and returns explicit *discrepancies* plus *actions*. Every run is persisted (`reconciliations`, `discrepancies` tables) and visible in the dashboard.
@@ -96,7 +98,9 @@ The new design prevents this structurally:
    * a large share of positions vanishing at once -> `DEGRADED`: nothing is closed or cancelled;
    * a single missing position is closed only after a SELL execution proves it, or after it is missing for N consecutive runs;
    * a stop is cancelled only once its position is confirmed closed; the executor additionally refuses to cancel a SELL order for any symbol the broker still reports as held.
-4. **Regression tests** replay the incident end to end (`tests/reconciliation/test_incident_20261012.py`): empty list, partially synced list, glitch persisting for 10 cycles, lost local state. In each case no stop is cancelled and no position is forgotten.
+4. **Stop ownership.** TWS only lets the API client id that placed an order change it. Stops placed by another client id (e.g. a repair script, or manually in TWS) are read via `reqAllOpenOrders()`, count as protection, are reported with symbol, order id and client id, and are never modified or cancelled. If TWS rejects a modification (e.g. error 103), the bot cancels the old stop and only places a replacement after TWS confirms the cancellation; otherwise it leaves the old stop in place and alerts. `turtlebot audit-orders` (read-only session) lists all working orders not owned by the bot.
+5. **Unverified stops.** Stops imported from the legacy state are marked unconfirmed; the first reconciliation reports any difference to the working TWS stop as `stop_price_mismatch` with both values.
+6. **Regression tests** replay the incident end to end (`tests/reconciliation/test_incident_20261012.py`): empty list, partially synced list, glitch persisting for 10 cycles, lost local state. In each case no stop is cancelled and no position is forgotten.
 
 ## Setup
 

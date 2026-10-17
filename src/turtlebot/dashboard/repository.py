@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 from collections.abc import Sequence
 
 import pandas as pd
@@ -23,6 +24,7 @@ from turtlebot.dashboard.schemas import (
     ReconciliationSummary,
     SignalView,
     Snapshot,
+    StopAlert,
     TradeStatsView,
     TradeView,
 )
@@ -32,6 +34,10 @@ from turtlebot.persistence.store import StateStore
 from turtlebot.timeutil import Clock
 
 BLOCK_LABELS = {1: "Core breakout", 2: "High-conviction filter"}
+ALERT_KINDS = ("foreign_client_order", "stop_price_mismatch")
+ALERT_EVENT_WINDOW = dt.timedelta(days=3)
+_ORDER_RE = re.compile(r"#(\d+)")
+_CLIENT_RE = re.compile(r"client id (\d+)")
 RUNNING_AFTER_LOOPS = 4  # heartbeat older than this many loop intervals => not running
 
 
@@ -67,9 +73,55 @@ class DashboardRepository:
         self.clock = clock
         self.demo = demo
 
+    # ------------------------------------------------------------------ alerts
+    def stop_alerts(self) -> list[StopAlert]:
+        """Stop problems from the latest reconciliation and recent failed replacements."""
+        alerts: list[StopAlert] = []
+        runs = self.store.reconciliations(limit=1)
+        if runs:
+            for d in runs[0].discrepancies:
+                if d.kind not in ALERT_KINDS:
+                    continue
+                order = _ORDER_RE.search(d.broker or "")
+                client = _CLIENT_RE.search(d.broker or "")
+                alerts.append(
+                    StopAlert(
+                        kind=d.kind,  # type: ignore[arg-type]
+                        symbol=d.symbol,
+                        order_id=int(order.group(1)) if order else None,
+                        client_id=int(client.group(1)) if client else None,
+                        message=f"{d.symbol}: {d.broker} - {d.resolution}",
+                        ts=runs[0].ts,
+                    )
+                )
+        since = self.clock() - ALERT_EVENT_WINDOW
+        for e in self.store.events(limit=50, kinds=["STOP_REPLACE_FAILED"]):
+            if e.ts < since:
+                continue
+            alerts.append(
+                StopAlert(
+                    kind="stop_replace_failed",
+                    symbol=e.symbol,
+                    order_id=e.order_id,
+                    client_id=_int_or_none(e.details.get("client_id")),
+                    message=f"{e.symbol}: stop #{e.order_id} could not be replaced "
+                    f"({e.details.get('error', 'rejected')}); existing stop @ {e.stop} kept",
+                    ts=e.ts,
+                )
+            )
+        return alerts
+
     # ------------------------------------------------------------------ positions
     def positions(self) -> list[PositionView]:
         """Active positions valued at the latest quote (entry price as fallback)."""
+        notes: dict[str, str] = {}
+        for alert in self.stop_alerts():
+            if alert.symbol and alert.symbol not in notes:
+                notes[alert.symbol] = (
+                    f"foreign stop (client {alert.client_id})"
+                    if alert.kind == "foreign_client_order"
+                    else alert.kind.replace("_", " ")
+                )
         active = self.store.active_positions()
         prices = self.quotes.quotes([p.symbol for p in active]) if active else {}
         today = self.clock().date()
@@ -108,6 +160,8 @@ class DashboardRepository:
                     ),
                     days_held=(today - p.entry_date).days if p.entry_date else None,
                     missing_cycles=p.missing_cycles,
+                    stop_confirmed=p.stop_confirmed,
+                    stop_alert=notes.get(p.symbol),
                 )
             )
         rows.sort(key=lambda r: (r.block, -(r.unrealized_pct or 0.0)))
@@ -202,6 +256,7 @@ class DashboardRepository:
             trading_enabled=self.settings.trading_enabled,
             demo=self.demo,
             last_reconciliation=last,
+            alerts=self.stop_alerts(),
         )
 
     def _account(self) -> AccountView | None:
@@ -314,6 +369,8 @@ class DashboardRepository:
             "STOP_LOST",
             "ADOPT",
             "UNIVERSE",
+            "STOP_REPLACE_FAILED",
+            "FOREIGN_ORDER",
         ]
         return [
             EventView(
@@ -363,3 +420,7 @@ class DashboardRepository:
             "recent_events": [e.model_dump(mode="json") for e in snap.events[:15]],
             "latest_signals": [s.model_dump(mode="json") for s in self.signals()[:15]],
         }
+
+
+def _int_or_none(value: object) -> int | None:
+    return value if isinstance(value, int) else None

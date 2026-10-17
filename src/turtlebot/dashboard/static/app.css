@@ -132,6 +132,9 @@ button, textarea { font: inherit; color: inherit; }
   background: var(--surface-2); font-size: 13px; color: var(--ink-2);
 }
 .banner strong { color: var(--ink); }
+.banner[data-level="bad"] { background: color-mix(in srgb, var(--bad-mark) 12%, var(--bg)); border-bottom-color: color-mix(in srgb, var(--bad-mark) 45%, transparent); }
+.banner[data-level="bad"] strong::before { content: "\26A0\FE0E  "; color: var(--bad); }
+.alerts { margin: 6px 0 0; padding-left: 18px; font-family: var(--font-num); font-size: 12px; }
 
 /* ---------------------------------------------------------------- layout */
 .layout {

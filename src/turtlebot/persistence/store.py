@@ -27,7 +27,8 @@ log = logging.getLogger(__name__)
 
 _POSITION_COLUMNS = (
     "symbol, block, status, qty, stop, signal_price, entry_price, entry_date, parent_order_id, "
-    "stop_order_id, signal_time, missing_cycles, exit_price, closed_at, close_reason"
+    "stop_order_id, signal_time, missing_cycles, stop_confirmed, exit_price, closed_at, "
+    "close_reason"
 )
 
 
@@ -217,6 +218,7 @@ class StateStore:
                 dt.datetime.fromisoformat(row["signal_time"]) if row["signal_time"] else None
             ),
             missing_cycles=int(row["missing_cycles"]),
+            stop_confirmed=bool(row["stop_confirmed"]),
             exit_price=row["exit_price"],
             closed_at=dt.datetime.fromisoformat(row["closed_at"]) if row["closed_at"] else None,
             close_reason=row["close_reason"],
@@ -237,6 +239,7 @@ class StateStore:
             p.stop_order_id,
             _iso(p.signal_time),
             p.missing_cycles,
+            int(p.stop_confirmed),
             p.exit_price,
             _iso(p.closed_at),
             p.close_reason,
@@ -272,7 +275,7 @@ class StateStore:
             PersistenceError: If the symbol already has an active position.
         """
         now = _iso(_utcnow())
-        placeholders = ", ".join("?" * 17)
+        placeholders = ", ".join("?" * 18)
         with self.transaction() as conn:
             cur = conn.execute(
                 f"INSERT INTO positions ({_POSITION_COLUMNS}, created_at, updated_at) "  # noqa: S608

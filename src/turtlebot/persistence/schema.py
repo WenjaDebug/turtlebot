@@ -131,6 +131,11 @@ MIGRATIONS: Final[tuple[str, ...]] = (
         available_funds REAL
     );
     """,
+    # v2 ---------------------------------------------------------------------------------------
+    # Stops imported from the legacy state file are unverified until compared with TWS.
+    """
+    ALTER TABLE positions ADD COLUMN stop_confirmed INTEGER NOT NULL DEFAULT 1;
+    """,
 )
 
 SCHEMA_VERSION: Final = len(MIGRATIONS)

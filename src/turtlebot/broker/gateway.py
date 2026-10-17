@@ -88,7 +88,18 @@ class BrokerGateway(Protocol):
         """
 
     def cancel_order(self, order: BrokerOrder) -> None:
-        """Cancel a working order."""
+        """Request the cancellation of a working order (asynchronous at TWS)."""
+
+    def confirm_cancelled(self, order: BrokerOrder, timeout_s: float) -> bool:
+        """Wait until the broker no longer lists ``order`` as working.
+
+        Must be based on a fresh order list from the broker, not on cached local status: after a
+        rejected modification ib_async marks the trade "Cancelled" locally although the order is
+        still active at TWS.
+
+        Returns:
+            ``True`` if the order is confirmed gone within ``timeout_s``.
+        """
 
 
 class DryRunGateway:
@@ -163,6 +174,9 @@ class DryRunGateway:
             symbol=order.symbol,
             order_id=order.order_id,
         )
+
+    def confirm_cancelled(self, order: BrokerOrder, timeout_s: float) -> bool:  # noqa: D102
+        return True  # nothing was really cancelled, nothing will be placed either
 
     def cancel_order(self, order: BrokerOrder) -> None:  # noqa: D102
         log_order_event(

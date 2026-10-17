@@ -13,6 +13,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import math
+import time
 from collections.abc import Sequence
 from typing import Final
 
@@ -60,6 +61,7 @@ DEAD_ORDER_CODES: Final = frozenset({103, 10147, 10148})
 CONNECTIVITY_LOST: Final = frozenset({1100})
 CONNECTIVITY_RESTORED: Final = frozenset({1101, 1102})
 
+_DONE_STATUSES: Final = frozenset({"Cancelled", "ApiCancelled", "Filled", "Inactive"})
 _STATUS_MAP: Final = {
     "Filled": OrderStatus.FILLED,
     "Cancelled": OrderStatus.CANCELLED,
@@ -89,10 +91,18 @@ class IBKRGateway:
         order_refs: Order references that identify the bot's own orders.
     """
 
-    def __init__(self, settings: BrokerSettings, client_id: int, order_refs: Sequence[str]) -> None:
+    def __init__(
+        self,
+        settings: BrokerSettings,
+        client_id: int,
+        order_refs: Sequence[str],
+        *,
+        readonly: bool = False,
+    ) -> None:
         self.settings = settings
         self.client_id = client_id
         self.order_refs = frozenset(order_refs)
+        self.readonly = readonly
         self.ib = IB()
         # ib_async re-subscribes the account summary on every TWS message 1102 without cancelling
         # the old subscription; after two reconnects TWS answers with error 322. The bot does not
@@ -113,7 +123,13 @@ class IBKRGateway:
         if s.port != s.paper_port:
             raise NotPaperAccountError(f"port {s.port} is not the paper port {s.paper_port}")
         try:
-            self.ib.connect(s.host, s.port, clientId=self.client_id, timeout=s.connect_timeout_s)
+            self.ib.connect(
+                s.host,
+                s.port,
+                clientId=self.client_id,
+                timeout=s.connect_timeout_s,
+                readonly=self.readonly,
+            )
         except (OSError, TimeoutError, ConnectionError) as exc:
             raise BrokerConnectionError(
                 f"cannot connect to TWS at {s.host}:{s.port}: {exc}"
@@ -260,20 +276,37 @@ class IBKRGateway:
             for p in raw_positions
             if p.account == account and p.position != 0
         }
-        # reqOpenOrders() (own client id) is kept in sync reliably, reqAllOpenOrders() is not.
-        self.ib.reqOpenOrders()
-        self.ib.sleep(1)
-        orders = [
-            self._to_broker_order(t)
-            for t in self.ib.openTrades()
-            if t.order.orderRef in self.order_refs and t.order.orderId not in self._dead_order_ids
-        ]
         return BrokerSnapshot(
             positions=positions,
-            orders=orders,
+            orders=self._working_orders(set(positions)),
             positions_synced=synced,
             taken_at=dt.datetime.now(dt.UTC),
+            client_id=self.client_id,
         )
+
+    def _working_orders(self, held: set[str]) -> list[BrokerOrder]:
+        """Working orders of *all* API clients, requested fresh from TWS.
+
+        ``reqOpenOrders()`` only returns the bot's own client id, so stops placed by another
+        client (e.g. the 12.10. repair script, client id 50) would be invisible and the bot would
+        place a second stop next to them. ``reqAllOpenOrders()`` is a one-off snapshot (not kept
+        in sync), which is exactly what a reconciliation needs.
+        """
+        result = []
+        for t in self.ib.reqAllOpenOrders():
+            o = t.order
+            if t.orderStatus.status in _DONE_STATUSES:
+                continue
+            ours = o.orderRef in self.order_refs
+            protective = (
+                o.action == "SELL" and o.orderType == "STP" and from_ib(t.contract.symbol) in held
+            )
+            if not (ours or protective):
+                continue
+            if o.clientId == self.client_id and o.orderId in self._dead_order_ids:
+                continue  # order id reported invalid by TWS for our own client
+            result.append(self._to_broker_order(t))
+        return result
 
     @staticmethod
     def _to_broker_order(trade: Trade) -> BrokerOrder:
@@ -289,6 +322,8 @@ class IBKRGateway:
             aux_price=aux,
             parent_id=o.parentId or None,
             filled=float(trade.orderStatus.filled),
+            client_id=int(o.clientId),
+            perm_id=int(o.permId) or None,
         )
 
     def recent_sell_fills(self, symbols: Sequence[str]) -> dict[str, Fill]:  # noqa: D102
@@ -400,14 +435,40 @@ class IBKRGateway:
         )
         return order_id
 
-    def _trade(self, order_id: int) -> Trade:
+    def _trade(self, order: BrokerOrder) -> Trade:
+        if order.client_id is not None and order.client_id != self.client_id:
+            raise OrderRejectedError(
+                f"order #{order.order_id} belongs to client id {order.client_id}, "
+                f"not {self.client_id} - TWS would reject any change",
+                order_id=order.order_id,
+            )
         for trade in self.ib.openTrades():
-            if trade.order.orderId == order_id:
+            if trade.order.orderId == order.order_id and trade.order.clientId == self.client_id:
                 return trade
-        raise OrderRejectedError(f"order #{order_id} is not open", order_id=order_id)
+        raise OrderRejectedError(f"order #{order.order_id} is not open", order_id=order.order_id)
+
+    def _still_working(self, order: BrokerOrder) -> bool:
+        for t in self.ib.reqAllOpenOrders():
+            if order.perm_id:
+                same = t.order.permId == order.perm_id
+            else:
+                same = t.order.orderId == order.order_id and (
+                    order.client_id is None or t.order.clientId == order.client_id
+                )
+            if same and t.orderStatus.status not in _DONE_STATUSES:
+                return True
+        return False
+
+    def confirm_cancelled(self, order: BrokerOrder, timeout_s: float) -> bool:  # noqa: D102
+        deadline = time.monotonic() + timeout_s
+        while self._still_working(order):
+            if time.monotonic() >= deadline:
+                return False
+            self.ib.sleep(1)
+        return True
 
     def modify_stop(self, order: BrokerOrder, qty: float, stop_price: float) -> None:  # noqa: D102
-        trade = self._trade(order.order_id)
+        trade = self._trade(order)
         trade.order.totalQuantity = qty
         trade.order.auxPrice = stop_price
         self.ib.placeOrder(trade.contract, trade.order)
@@ -426,7 +487,7 @@ class IBKRGateway:
         )
 
     def cancel_order(self, order: BrokerOrder) -> None:  # noqa: D102
-        trade = self._trade(order.order_id)
+        trade = self._trade(order)
         self.ib.cancelOrder(trade.order)
         log_order_event(
             "order.cancelled",

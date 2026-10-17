@@ -219,28 +219,12 @@ class ReconciliationService:
                     order_id=order_id,
                 )
             case ModifyStop(order, symbol, block, qty, price, ref, reason):
+                if self._refuse_foreign(order, snapshot, "modify"):
+                    return
                 try:
                     self.gateway.modify_stop(order, qty, price)
                 except OrderRejectedError as exc:
-                    # Never leave the position unprotected: replace the dead order right away.
-                    log.warning(
-                        "%s: stop update of #%d rejected (%s) -> placing a replacement stop",
-                        symbol,
-                        order.order_id,
-                        exc,
-                    )
-                    new_id = self.gateway.place_stop(symbol, qty, price, ref)
-                    self._sync_stop(symbol, price, new_id)
-                    self.store.record_event(
-                        "STOP_NEW",
-                        ts=now,
-                        symbol=symbol,
-                        block=block,
-                        qty=qty,
-                        stop=price,
-                        order_id=new_id,
-                        details={"replaces": order.order_id},
-                    )
+                    self._replace_rejected_stop(action, exc)
                     return
                 self._sync_stop(symbol, price, order.order_id)
                 self.store.record_event(
@@ -253,6 +237,104 @@ class ReconciliationService:
                     order_id=order.order_id,
                     details={"change": reason},
                 )
+
+    def _refuse_foreign(self, order: BrokerOrder, snapshot: BrokerSnapshot, verb: str) -> bool:
+        """Defence in depth: never touch an order owned by another API client id."""
+        if not snapshot.is_foreign(order):
+            return False
+        log.critical(
+            "%s: refusing to %s #%d - placed by client id %s, bot is client id %s",
+            order.symbol,
+            verb,
+            order.order_id,
+            order.client_id,
+            snapshot.client_id,
+        )
+        self.store.record_event(
+            "FOREIGN_ORDER",
+            ts=self.clock(),
+            symbol=order.symbol,
+            qty=order.qty,
+            stop=order.aux_price,
+            order_id=order.order_id,
+            details={"client_id": order.client_id, "bot_client_id": snapshot.client_id},
+        )
+        return True
+
+    def _replace_rejected_stop(self, action: ModifyStop, error: OrderRejectedError) -> None:
+        """Cancel-and-replace after TWS rejected a stop modification (e.g. error 103).
+
+        A replacement is only placed once the broker confirms the old stop is gone. Otherwise two
+        stops would protect the same shares and could sell twice (i.e. open a short). If the
+        cancellation cannot be confirmed, nothing is placed: the old stop keeps protecting the
+        position and the user is alerted.
+        """
+        order, symbol = action.order, action.symbol
+        timeout = self.settings.reconciliation.cancel_confirm_timeout_s
+        log.warning(
+            "%s: modification of stop #%d rejected (%s) -> cancel-and-replace",
+            symbol,
+            order.order_id,
+            error,
+        )
+        try:
+            self.gateway.cancel_order(order)
+            confirmed = self.gateway.confirm_cancelled(order, timeout)
+        except TurtleBotError as exc:
+            log.warning("%s: cancel of #%d failed: %s", symbol, order.order_id, exc)
+            confirmed = False
+        if not confirmed:
+            message = (
+                f"{symbol}: stop #{order.order_id} could not be modified ({error}) and its "
+                f"cancellation was not confirmed within {timeout:.0f} s. No replacement placed; "
+                f"the existing stop @ {order.aux_price} stays active. Check the order in TWS."
+            )
+            log.critical(message)
+            self.store.record_event(
+                "STOP_REPLACE_FAILED",
+                ts=self.clock(),
+                symbol=symbol,
+                block=action.block,
+                qty=order.qty,
+                stop=order.aux_price,
+                order_id=order.order_id,
+                details={
+                    "error": str(error),
+                    "wanted_stop": action.stop_price,
+                    "client_id": order.client_id,
+                },
+            )
+            self.notifier.notify("Turtle: stop replacement failed", message)
+            return
+        self.store.record_event(
+            "CANCEL",
+            ts=self.clock(),
+            symbol=symbol,
+            qty=order.qty,
+            stop=order.aux_price,
+            order_id=order.order_id,
+            details={"reason": "replace rejected stop", "order_type": order.order_type},
+        )
+        # The old stop may have been filled instead of cancelled: only re-protect a held position.
+        held = self.gateway.snapshot().positions.get(symbol)
+        if held is None or held.qty <= 0:
+            log.warning(
+                "%s: position gone after cancelling #%d - no new stop", symbol, order.order_id
+            )
+            return
+        qty = abs(held.qty)
+        new_id = self.gateway.place_stop(symbol, qty, action.stop_price, action.order_ref)
+        self._sync_stop(symbol, action.stop_price, new_id)
+        self.store.record_event(
+            "STOP_NEW",
+            ts=self.clock(),
+            symbol=symbol,
+            block=action.block,
+            qty=qty,
+            stop=action.stop_price,
+            order_id=new_id,
+            details={"replaces": order.order_id},
+        )
 
     def _sync_stop(self, symbol: str, price: float, order_id: int | None) -> None:
         position: Position | None = self.store.active_position(symbol)
@@ -270,6 +352,8 @@ class ReconciliationService:
                 order.symbol,
                 order.order_id,
             )
+            return
+        if self._refuse_foreign(order, snapshot, "cancel"):
             return
         if plan.outcome is not Outcome.OK and not self._exit_confirmed(order.symbol, plan):
             log.critical(

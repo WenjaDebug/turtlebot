@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import itertools
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from tests.factories import NY
 from turtlebot.broker.gateway import OrderEventHandler
@@ -35,6 +35,11 @@ class FakeBroker:
         synced: Value of ``positions_synced`` in snapshots.
         reject_modify: Order ids whose modification TWS rejects (dead ids).
         connect_failures: Number of upcoming ``connect()`` calls that fail.
+        client_id: The bot's API client id. Orders of another client id behave like TWS treats
+            them: modifications are rejected with error 103, cancellations have no effect.
+        uncancellable: Own order ids whose cancellation is never confirmed.
+        report_client_ids: If false, snapshots omit the order owner (``client_id=None``), as if
+            TWS did not tell - only the executor's cancel-and-replace safeguard then helps.
     """
 
     positions: dict[str, BrokerPosition] = field(default_factory=dict)
@@ -55,6 +60,9 @@ class FakeBroker:
     hide_symbols: set[str] = field(default_factory=set)
     reject_modify: set[int] = field(default_factory=set)
     connect_failures: int = 0
+    client_id: int = 11
+    uncancellable: set[int] = field(default_factory=set)
+    report_client_ids: bool = True
     margin_excess: float | None = 90_000.0
     calls: list[tuple[str, object]] = field(default_factory=list)
     entries: list[tuple[str, float, EntryMode, float, str]] = field(default_factory=list)
@@ -99,9 +107,13 @@ class FakeBroker:
         )
         return BrokerSnapshot(
             positions=dict(visible),
-            orders=list(self.orders.values()),
+            orders=[
+                o if self.report_client_ids else replace(o, client_id=None)
+                for o in self.orders.values()
+            ],
             positions_synced=self.synced,
             taken_at=dt.datetime(2026, 10, 14, 9, 0, tzinfo=NY),
+            client_id=self.client_id,
         )
 
     def recent_sell_fills(self, symbols: Sequence[str]) -> dict[str, Fill]:
@@ -123,7 +135,13 @@ class FakeBroker:
         parent = next(self._ids)
         stop = next(self._ids)
         self.orders[parent] = BrokerOrder(
-            parent, symbol, OrderAction.BUY, mode.value.upper(), qty, order_ref
+            parent,
+            symbol,
+            OrderAction.BUY,
+            mode.value.upper(),
+            qty,
+            order_ref,
+            client_id=self.client_id,
         )
         self.orders[stop] = BrokerOrder(
             stop,
@@ -134,6 +152,7 @@ class FakeBroker:
             order_ref,
             aux_price=stop_price,
             parent_id=parent,
+            client_id=self.client_id,
         )
         self.calls.append(("place_entry", symbol))
         self.entries.append((symbol, qty, mode, stop_price, order_ref))
@@ -143,14 +162,28 @@ class FakeBroker:
         self._require_connection()
         oid = next(self._ids)
         self.orders[oid] = BrokerOrder(
-            oid, symbol, OrderAction.SELL, "STP", qty, order_ref, aux_price=stop_price
+            oid,
+            symbol,
+            OrderAction.SELL,
+            "STP",
+            qty,
+            order_ref,
+            aux_price=stop_price,
+            client_id=self.client_id,
         )
         self.calls.append(("place_stop", (symbol, qty, stop_price)))
         return oid
 
+    def _foreign(self, order_id: int) -> bool:
+        order = self.orders.get(order_id)
+        return order is not None and order.client_id not in (None, self.client_id)
+
     def modify_stop(self, order: BrokerOrder, qty: float, stop_price: float) -> None:
         self._require_connection()
         self.calls.append(("modify_stop", (order.order_id, qty, stop_price)))
+        if self._foreign(order.order_id):
+            # Like TWS: the id belongs to another client -> error 103, original order unchanged.
+            raise OrderRejectedError("103: duplicate order id", order_id=order.order_id, code=103)
         if order.order_id in self.reject_modify or order.order_id not in self.orders:
             self.orders.pop(order.order_id, None)
             raise OrderRejectedError("10148: order cannot be modified", order_id=order.order_id)
@@ -164,12 +197,21 @@ class FakeBroker:
             old.order_ref,
             aux_price=stop_price,
             parent_id=old.parent_id,
+            client_id=old.client_id,
         )
 
     def cancel_order(self, order: BrokerOrder) -> None:
         self._require_connection()
         self.calls.append(("cancel", order.order_id))
+        if self._foreign(order.order_id) or order.order_id in self.uncancellable:
+            return  # TWS ignores it (not the owner) / never confirms it
         self.orders.pop(order.order_id, None)
+
+    def confirm_cancelled(self, order: BrokerOrder, timeout_s: float) -> bool:
+        if order.order_id in self.orders:
+            self.slept += timeout_s
+            return False
+        return True
 
     # ------------------------------------------------------------------ simulation helpers
     @property
@@ -184,10 +226,27 @@ class FakeBroker:
     def hold(self, symbol: str, qty: float, avg_cost: float = 100.0) -> None:
         self.positions[symbol] = BrokerPosition(symbol, qty, avg_cost)
 
-    def add_stop(self, symbol: str, qty: float, price: float, ref: str = "TURTLE") -> int:
-        oid = next(self._ids)
+    def add_stop(
+        self,
+        symbol: str,
+        qty: float,
+        price: float,
+        ref: str = "TURTLE",
+        *,
+        client_id: int | None = None,
+        order_id: int | None = None,
+    ) -> int:
+        """Working stop; a ``client_id`` other than the bot's makes it a foreign order."""
+        oid = order_id if order_id is not None else next(self._ids)
         self.orders[oid] = BrokerOrder(
-            oid, symbol, OrderAction.SELL, "STP", qty, ref, aux_price=price
+            oid,
+            symbol,
+            OrderAction.SELL,
+            "STP",
+            qty,
+            ref,
+            aux_price=price,
+            client_id=self.client_id if client_id is None else client_id,
         )
         return oid
 

@@ -6,6 +6,7 @@ Commands:
     migrate-legacy  Import ``live_turtle_state.json`` and ``live_turtle_journal.csv``.
     dashboard       Serve the web dashboard (``--demo`` uses synthetic data).
     backtest        Run the portfolio backtest on cached/downloaded daily data.
+    audit-orders    Read-only: list working orders not owned by the bot's client id.
     config          Print the effective configuration (secrets masked).
 """
 
@@ -25,6 +26,7 @@ from pathlib import Path
 from typing import IO
 
 from turtlebot.config import Settings, get_settings
+from turtlebot.domain.models import BrokerOrder
 from turtlebot.exceptions import NotPaperAccountError, TurtleBotError
 from turtlebot.logging_setup import configure_logging
 
@@ -128,6 +130,42 @@ def cmd_run(args: argparse.Namespace, settings: Settings) -> int:
         finally:
             gateway.disconnect()
             store.close()
+    return 0
+
+
+def foreign_orders(orders: Sequence[BrokerOrder], bot_client_id: int) -> list[BrokerOrder]:
+    """Orders the live bot cannot modify: placed by another client id or without a bot ref."""
+    return [o for o in orders if o.client_id != bot_client_id]
+
+
+def cmd_audit_orders(args: argparse.Namespace, settings: Settings) -> int:
+    """List working orders that the bot's client id does not own (read-only TWS session)."""
+    from turtlebot.broker.ibkr import IBKRGateway
+
+    with client_id_lock(settings.paths.lock_dir, settings.broker.dry_run_client_ids) as cid:
+        gateway = IBKRGateway(settings.broker, cid, list(settings.order_refs), readonly=True)
+        gateway.connect()
+        try:
+            snapshot = gateway.snapshot()
+        finally:
+            gateway.disconnect()
+    foreign = foreign_orders(snapshot.orders, settings.broker.client_id)
+    out = sys.stdout
+    out.write(f"Bot client id: {settings.broker.client_id}\n")
+    out.write(
+        f"{'symbol':8s} {'order':>7s} {'perm id':>11s} {'client':>6s} {'type':5s} "
+        f"{'qty':>8s} {'stop':>9s}  ref\n"
+    )
+    for o in sorted(foreign, key=lambda o: (o.symbol, o.order_id)):
+        out.write(
+            f"{o.symbol:8s} {o.order_id:>7d} {o.perm_id or 0:>11d} {o.client_id!s:>6s} "
+            f"{o.order_type:5s} {o.qty:>8g} {o.aux_price if o.aux_price is not None else '-':>9}  "
+            f"{o.order_ref or '-'}\n"
+        )
+    out.write(
+        f"\n{len(foreign)} working order(s) not owned by client id "
+        f"{settings.broker.client_id}.\n"
+    )
     return 0
 
 
@@ -257,6 +295,11 @@ def build_parser() -> argparse.ArgumentParser:
     bt.add_argument("--limit", type=int, help="only the first N tickers")
     bt.add_argument("--trades-csv", type=Path)
     bt.set_defaults(func=cmd_backtest)
+
+    audit = sub.add_parser(
+        "audit-orders", help="read-only: list working orders not owned by the bot's client id"
+    )
+    audit.set_defaults(func=cmd_audit_orders)
 
     cfg = sub.add_parser("config", help="print the effective configuration")
     cfg.set_defaults(func=cmd_config)
