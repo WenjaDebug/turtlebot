@@ -44,16 +44,25 @@ function renderStatus(o) {
   const banner = $("#banner");
   const alerts = s.alerts || [];
   if (alerts.length) {
+    const bad = alerts.filter((a) => a.severity !== "warn");
+    const warn = alerts.filter((a) => a.severity === "warn");
     banner.hidden = false;
-    banner.dataset.level = "bad";
-    const foreign = alerts.filter((a) => a.kind === "foreign_client_order").length;
-    const failed = alerts.filter((a) => a.kind === "stop_replace_failed").length;
+    banner.dataset.level = bad.length ? "bad" : "warn";
+    const count = (n, word) => (n ? `${n} ${word}${n > 1 ? "s" : ""}` : "");
+    const foreign = bad.filter((a) => a.kind === "foreign_client_order").length;
+    const failed = bad.filter((a) => a.kind === "stop_replace_failed").length;
+    const mismatch = bad.length - foreign - failed;
     const head = [
       foreign ? `${foreign} stop order${foreign > 1 ? "s" : ""} owned by another client id` : "",
-      failed ? `${failed} failed stop replacement${failed > 1 ? "s" : ""}` : "",
-    ].filter(Boolean).join(" · ") || `${alerts.length} stop mismatch${alerts.length > 1 ? "es" : ""}`;
-    banner.innerHTML = `<strong>Stop orders need attention: ${esc(head)}.</strong>
-      <ul class="alerts">${alerts.slice(0, 12).map((a) => `<li>${esc(a.message)}</li>`).join("")}</ul>`;
+      count(failed, "failed stop replacement"),
+      mismatch ? `${mismatch} stop mismatch${mismatch > 1 ? "es" : ""}` : "",
+      count(warn.length, "price data / stop distance warning"),
+    ].filter(Boolean).join(" · ");
+    const title = bad.length ? "Stop orders need attention" : "Check these positions";
+    // Stop order problems first; warnings fill the remaining rows.
+    const rows = [...bad, ...warn].slice(0, 12);
+    banner.innerHTML = `<strong>${title}: ${esc(head)}.</strong>
+      <ul class="alerts">${rows.map((a) => `<li data-level="${a.severity === "warn" ? "warn" : "bad"}">${esc(a.message)}</li>`).join("")}</ul>`;
     return;
   }
   delete banner.dataset.level;
@@ -122,6 +131,7 @@ function renderPositions(rows) {
         p.quote_stale && p.status === "open" ? '<span class="tag tag--warn" title="No live quote, valued at entry">no quote</span>' : "",
         p.stop_alert ? `<span class="tag tag--bad" title="See the stop alerts above">${esc(p.stop_alert)}</span>` : "",
         !p.stop_confirmed && !p.stop_alert ? '<span class="tag tag--warn" title="Imported stop not yet compared with TWS">stop unverified</span>' : "",
+        ...(p.warnings || []).map((w) => `<span class="tag tag--warn" title="See the warnings above">${esc(w)}</span>`),
       ].join("");
       const pnl = isNum(p.unrealized_pnl)
         ? `<span class="${tone(p.unrealized_pnl)}">${pct(p.unrealized_pct, { signed: true })}</span> <span class="muted">${money(p.unrealized_pnl, { signed: true })}</span>`

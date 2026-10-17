@@ -174,6 +174,44 @@ class ReconciliationSettings(BaseModel):
     )
 
 
+class DataQualitySettings(BaseModel):
+    """Checks of the price data the trailing stops are computed from.
+
+    None of these change the strategy: the stop is still the lowest low of the exit period. They
+    only decide which data source that low is taken from and raise warnings.
+    """
+
+    cross_check_lows: bool = Field(
+        True,
+        description="Compare the Yahoo lows used for stops with TWS historical bars "
+        "(ADJUSTED_LAST) before trailing.",
+    )
+    low_tolerance: float = Field(
+        0.02,
+        gt=0,
+        lt=1,
+        description="Relative difference between the two sources above which the TWS low is used.",
+    )
+    require_second_source: bool = Field(
+        True,
+        description="Without TWS bars a stop is not trailed (only placed at its last known level).",
+    )
+    outlier_atr_multiple: float = Field(
+        3.0, gt=0, description="A low this many ATRs below the surrounding closes is flagged."
+    )
+    atr_period: int = Field(14, ge=2)
+    takeover_jump: float = Field(
+        0.30, gt=0, description="Daily close-to-close gain that may indicate a takeover bid."
+    )
+    takeover_volume_ratio: float = Field(
+        5.0, gt=1, description="Volume of the jump day relative to its 20-day average."
+    )
+    takeover_quiet_range: float = Field(
+        0.01, gt=0, description="Max daily range (high-low)/close of the sessions after the jump."
+    )
+    takeover_quiet_days: int = Field(3, ge=1)
+
+
 class PathSettings(BaseModel):
     """Filesystem locations (relative paths are resolved against the working directory)."""
 
@@ -207,6 +245,12 @@ class DashboardSettings(BaseModel):
     chat_enabled: bool = True
     chat_timeout_s: float = Field(180.0, gt=0)
     chat_command: str = "claude"
+    wide_stop_warning: float = Field(
+        0.25,
+        gt=0,
+        lt=1,
+        description="Warn if a stop is more than this fraction below the current price.",
+    )
 
 
 class LogSettings(BaseModel):
@@ -244,6 +288,7 @@ class Settings(BaseSettings):
     schedule: ScheduleSettings = Field(default_factory=ScheduleSettings)
     broker: BrokerSettings = Field(default_factory=BrokerSettings)
     reconciliation: ReconciliationSettings = Field(default_factory=ReconciliationSettings)
+    data_quality: DataQualitySettings = Field(default_factory=DataQualitySettings)
     paths: PathSettings = Field(default_factory=PathSettings)
     dashboard: DashboardSettings = Field(default_factory=DashboardSettings)
     log: LogSettings = Field(default_factory=LogSettings)

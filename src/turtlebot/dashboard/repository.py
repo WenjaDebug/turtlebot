@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 import pandas as pd
 
 from turtlebot.analytics.metrics import compute_metrics, drawdown_series
 from turtlebot.config import Settings
+from turtlebot.data.quality import LOW_CHECK_KEY
 from turtlebot.dashboard.quotes import QuoteService
 from turtlebot.dashboard.schemas import (
     AccountView,
@@ -36,6 +38,13 @@ from turtlebot.timeutil import Clock
 BLOCK_LABELS = {1: "Core breakout", 2: "High-conviction filter"}
 ALERT_KINDS = ("foreign_client_order", "stop_price_mismatch")
 ALERT_EVENT_WINDOW = dt.timedelta(days=3)
+WARNING_LABELS = {
+    "low_source_mismatch": "price data mismatch",
+    "low_unverified": "low unverified",
+    "low_outlier": "low outlier",
+    "possible_takeover": "possible takeover",
+    "wide_stop": "wide stop",
+}
 _ORDER_RE = re.compile(r"#(\d+)")
 _CLIENT_RE = re.compile(r"client id (\d+)")
 RUNNING_AFTER_LOOPS = 4  # heartbeat older than this many loop intervals => not running
@@ -74,8 +83,16 @@ class DashboardRepository:
         self.demo = demo
 
     # ------------------------------------------------------------------ alerts
-    def stop_alerts(self) -> list[StopAlert]:
-        """Stop problems from the latest reconciliation and recent failed replacements."""
+    def stop_alerts(self, prices: Mapping[str, float | None] | None = None) -> list[StopAlert]:
+        """Stop problems and warnings for the active positions.
+
+        ``bad``: foreign stops and price mismatches of the latest reconciliation, failed stop
+        replacements. ``warn``: findings of the latest price data check per symbol and stops
+        further below the price than ``dashboard.wide_stop_warning``.
+
+        Args:
+            prices: Latest quotes, if the caller already has them.
+        """
         alerts: list[StopAlert] = []
         runs = self.store.reconciliations(limit=1)
         if runs:
@@ -109,21 +126,85 @@ class DashboardRepository:
                     ts=e.ts,
                 )
             )
+        active = self.store.active_positions()
+        alerts.extend(self._data_alerts({p.symbol for p in active}, since))
+        if prices is None:
+            prices = self.quotes.quotes([p.symbol for p in active]) if active else {}
+        alerts.extend(self._wide_stop_alerts(active, prices))
+        return alerts
+
+    def _data_alerts(self, symbols: set[str], since: dt.datetime) -> list[StopAlert]:
+        try:
+            latest = json.loads(self.store.get_meta(LOW_CHECK_KEY) or "{}")
+        except json.JSONDecodeError:
+            return []
+        alerts = []
+        for symbol in sorted(symbols & set(latest)):
+            entry = latest[symbol]
+            ts = dt.datetime.fromisoformat(entry["ts"])
+            if ts < since:
+                continue
+            for issue in entry.get("issues", []):
+                if issue.get("kind") not in WARNING_LABELS:
+                    continue
+                alerts.append(
+                    StopAlert(
+                        kind=issue["kind"],
+                        severity="warn",
+                        symbol=symbol,
+                        order_id=None,
+                        client_id=None,
+                        message=f"{symbol}: {issue.get('message', '')}",
+                        ts=ts,
+                    )
+                )
+        return alerts
+
+    def _wide_stop_alerts(
+        self, active: Sequence[Position], prices: Mapping[str, float | None]
+    ) -> list[StopAlert]:
+        limit = self.settings.dashboard.wide_stop_warning
+        alerts = []
+        for p in active:
+            price = prices.get(p.symbol)
+            if p.status is not PositionStatus.OPEN or price is None or price <= 0:
+                continue
+            distance = (price - p.stop) / price
+            if distance > limit:
+                alerts.append(
+                    StopAlert(
+                        kind="wide_stop",
+                        severity="warn",
+                        symbol=p.symbol,
+                        order_id=p.stop_order_id,
+                        client_id=None,
+                        message=f"{p.symbol}: stop {p.stop:g} is {distance:.0%} below the price "
+                        f"{price:g} (warning above {limit:.0%})",
+                        ts=self.clock(),
+                    )
+                )
         return alerts
 
     # ------------------------------------------------------------------ positions
     def positions(self) -> list[PositionView]:
         """Active positions valued at the latest quote (entry price as fallback)."""
+        active = self.store.active_positions()
+        prices = self.quotes.quotes([p.symbol for p in active]) if active else {}
         notes: dict[str, str] = {}
-        for alert in self.stop_alerts():
-            if alert.symbol and alert.symbol not in notes:
+        warnings: dict[str, list[str]] = {}
+        for alert in self.stop_alerts(prices):
+            if not alert.symbol:
+                continue
+            if alert.severity == "warn":
+                label = WARNING_LABELS[alert.kind]
+                if label not in warnings.setdefault(alert.symbol, []):
+                    warnings[alert.symbol].append(label)
+            elif alert.symbol not in notes:
                 notes[alert.symbol] = (
                     f"foreign stop (client {alert.client_id})"
                     if alert.kind == "foreign_client_order"
                     else alert.kind.replace("_", " ")
                 )
-        active = self.store.active_positions()
-        prices = self.quotes.quotes([p.symbol for p in active]) if active else {}
         today = self.clock().date()
         rows = []
         for p in active:
@@ -162,6 +243,7 @@ class DashboardRepository:
                     missing_cycles=p.missing_cycles,
                     stop_confirmed=p.stop_confirmed,
                     stop_alert=notes.get(p.symbol),
+                    warnings=warnings.get(p.symbol, []),
                 )
             )
         rows.sort(key=lambda r: (r.block, -(r.unrealized_pct or 0.0)))

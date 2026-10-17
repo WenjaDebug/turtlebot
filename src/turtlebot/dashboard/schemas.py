@@ -21,7 +21,19 @@ class ReconciliationSummary(BaseModel):
 class StopAlert(BaseModel):
     """A stop order problem that needs the user's attention."""
 
-    kind: Literal["foreign_client_order", "stop_price_mismatch", "stop_replace_failed"]
+    kind: Literal[
+        "foreign_client_order",
+        "stop_price_mismatch",
+        "stop_replace_failed",
+        "low_source_mismatch",
+        "low_unverified",
+        "low_outlier",
+        "possible_takeover",
+        "wide_stop",
+    ]
+    severity: Literal["bad", "warn"] = Field(
+        "bad", description="'bad': a stop order problem; 'warn': price data or risk notice"
+    )
     symbol: str | None
     order_id: int | None
     client_id: int | None
@@ -115,6 +127,9 @@ class PositionView(BaseModel):
     missing_cycles: int
     stop_confirmed: bool
     stop_alert: str | None = Field(None, description="Foreign stop owner or price mismatch")
+    warnings: list[str] = Field(
+        default_factory=list, description="Price data and stop distance notices"
+    )
 
 
 class TradeView(BaseModel):

@@ -81,3 +81,36 @@ def test_dry_run_session_judges_ownership_like_the_live_bot(
     snap = gw.snapshot()
     assert snap.client_id == BOT
     assert not snap.is_foreign(stop("SHOP", 24, client_id=BOT))
+
+
+def test_tws_daily_bars_are_requested_adjusted_and_parsed(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+
+    gw = IBKRGateway(BrokerSettings(), 21, ["TURTLE"], readonly=True)
+    requests: list[dict[str, object]] = []
+
+    def history(contract: object, **kw: object) -> list[SimpleNamespace]:
+        requests.append(kw)
+        return [
+            SimpleNamespace(
+                date=dt.date(2026, 10, 7),
+                open=2.49,
+                high=2.52,
+                low=2.44,
+                close=2.5,
+                volume=1581953.0,
+            )
+        ]
+
+    monkeypatch.setattr(gw, "_qualify", lambda symbol: object())
+    monkeypatch.setattr(gw.ib, "reqHistoricalData", history)
+    (bar,) = gw.daily_bars("BMBL", 13)
+    assert (bar.date, bar.low, bar.close) == (dt.date(2026, 10, 7), 2.44, 2.5)
+    assert requests[0]["whatToShow"] == "ADJUSTED_LAST"
+    assert requests[0]["durationStr"] == "13 D"
+
+    def broken(contract: object, **kw: object) -> list[SimpleNamespace]:
+        raise ConnectionError("Socket disconnect")
+
+    monkeypatch.setattr(gw.ib, "reqHistoricalData", broken)
+    assert gw.daily_bars("BMBL", 13) == []

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import datetime as dt
 import itertools
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
+
+import pandas as pd
 
 from tests.factories import NY
 from turtlebot.broker.gateway import OrderEventHandler
@@ -14,6 +16,7 @@ from turtlebot.domain.models import (
     BrokerOrder,
     BrokerPosition,
     BrokerSnapshot,
+    DailyBar,
     EntryMode,
     EntryTicket,
     Fill,
@@ -22,6 +25,24 @@ from turtlebot.domain.models import (
     OrderStatus,
 )
 from turtlebot.exceptions import BrokerConnectionError, OrderRejectedError
+
+
+def frame_bars(frame: pd.DataFrame | None) -> list[DailyBar]:
+    """Daily bars of an OHLCV frame (a broker that agrees with the market data)."""
+    if frame is None:
+        return []
+    cols = {c: frame[c].to_numpy(dtype=float) for c in ("Open", "High", "Low", "Close", "Volume")}
+    return [
+        DailyBar(
+            ts.date(),
+            cols["Open"][i],
+            cols["High"][i],
+            cols["Low"][i],
+            cols["Close"][i],
+            cols["Volume"][i],
+        )
+        for i, ts in enumerate(pd.DatetimeIndex(frame.index))
+    ]
 
 
 @dataclass
@@ -64,6 +85,8 @@ class FakeBroker:
     uncancellable: set[int] = field(default_factory=set)
     report_client_ids: bool = True
     margin_excess: float | None = 90_000.0
+    bars: dict[str, list[DailyBar]] = field(default_factory=dict)
+    bar_source: Callable[[str], list[DailyBar]] | None = None
     calls: list[tuple[str, object]] = field(default_factory=list)
     entries: list[tuple[str, float, EntryMode, float, str]] = field(default_factory=list)
     slept: float = 0.0
@@ -125,6 +148,12 @@ class FakeBroker:
 
     def margin_excess_after(self, symbol: str, qty: float) -> float | None:
         return self.margin_excess
+
+    def daily_bars(self, symbol: str, sessions: int) -> list[DailyBar]:
+        self.calls.append(("daily_bars", symbol))
+        if symbol not in self.bars and self.bar_source is not None:
+            return self.bar_source(symbol)[-sessions:]
+        return self.bars.get(symbol, [])[-sessions:]
 
     def place_entry(
         self, symbol: str, qty: float, mode: EntryMode, stop_price: float, order_ref: str

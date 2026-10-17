@@ -12,7 +12,7 @@ import pytest
 
 from tests.conftest import MutableClock, RecordingNotifier
 from tests.factories import NY, breakout_frame, ohlcv, position
-from tests.fakes import FakeBroker
+from tests.fakes import FakeBroker, frame_bars
 from turtlebot.broker.gateway import DryRunGateway
 from turtlebot.config import Settings
 from turtlebot.domain.models import (
@@ -91,6 +91,7 @@ def engine(
         engine_settings, broker, store, market, notifier, clock, sleep=sleeps.append
     )
     broker.set_order_event_handler(eng.on_order_event)
+    broker.bar_source = lambda symbol: frame_bars(market.frames.get(symbol))
     return eng
 
 

@@ -134,6 +134,9 @@ button, textarea { font: inherit; color: inherit; }
 .banner strong { color: var(--ink); }
 .banner[data-level="bad"] { background: color-mix(in srgb, var(--bad-mark) 12%, var(--bg)); border-bottom-color: color-mix(in srgb, var(--bad-mark) 45%, transparent); }
 .banner[data-level="bad"] strong::before { content: "\26A0\FE0E  "; color: var(--bad); }
+.banner[data-level="warn"] { background: color-mix(in srgb, var(--warn-mark) 12%, var(--bg)); border-bottom-color: color-mix(in srgb, var(--warn-mark) 45%, transparent); }
+.banner[data-level="warn"] strong::before { content: "\26A0\FE0E  "; color: var(--warn); }
+.alerts li[data-level="warn"]::marker { color: var(--warn); }
 .alerts { margin: 6px 0 0; padding-left: 18px; font-family: var(--font-num); font-size: 12px; }
 
 /* ---------------------------------------------------------------- layout */

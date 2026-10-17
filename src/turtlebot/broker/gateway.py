@@ -16,6 +16,7 @@ from turtlebot.domain.models import (
     AccountSnapshot,
     BrokerOrder,
     BrokerSnapshot,
+    DailyBar,
     EntryMode,
     EntryTicket,
     Fill,
@@ -67,6 +68,13 @@ class BrokerGateway(Protocol):
 
     def margin_excess_after(self, symbol: str, qty: float) -> float | None:
         """Excess liquidity after a hypothetical buy (TWS what-if); ``None`` if unavailable."""
+
+    def daily_bars(self, symbol: str, sessions: int) -> list[DailyBar]:
+        """Split/dividend-adjusted daily bars of the last ``sessions`` sessions from the broker.
+
+        The latest bar may still be forming during the session. Returns ``[]`` if the broker
+        has no data (the caller treats the symbol as unverified).
+        """
 
     def place_entry(
         self, symbol: str, qty: float, mode: EntryMode, stop_price: float, order_ref: str
@@ -139,6 +147,9 @@ class DryRunGateway:
 
     def margin_excess_after(self, symbol: str, qty: float) -> float | None:  # noqa: D102
         return self.inner.margin_excess_after(symbol, qty)
+
+    def daily_bars(self, symbol: str, sessions: int) -> list[DailyBar]:  # noqa: D102
+        return self.inner.daily_bars(symbol, sessions)
 
     def place_entry(  # noqa: D102
         self, symbol: str, qty: float, mode: EntryMode, stop_price: float, order_ref: str

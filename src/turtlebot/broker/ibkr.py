@@ -36,6 +36,7 @@ from turtlebot.domain.models import (
     BrokerOrder,
     BrokerPosition,
     BrokerSnapshot,
+    DailyBar,
     EntryMode,
     EntryTicket,
     Fill,
@@ -58,6 +59,7 @@ INFO_CODES: Final = frozenset({1102, 2104, 2106, 2107, 2108, 2119, 2158, 10349})
 # Order id no longer valid at TWS: 103 duplicate id, 10147/10148 cancel/modify of unknown order.
 DEAD_ORDER_CODES: Final = frozenset({103, 10147, 10148})
 # Connectivity between TWS and IB servers lost / restored.
+HISTORICAL_TIMEOUT_S: Final = 20.0
 CONNECTIVITY_LOST: Final = frozenset({1100})
 CONNECTIVITY_RESTORED: Final = frozenset({1101, 1102})
 
@@ -70,6 +72,14 @@ _STATUS_MAP: Final = {
     "Submitted": OrderStatus.SUBMITTED,
     "PreSubmitted": OrderStatus.SUBMITTED,
 }
+
+
+def _bar_date(value: object) -> dt.date:
+    if isinstance(value, dt.datetime):
+        return value.date()
+    if isinstance(value, dt.date):
+        return value
+    return dt.date.fromisoformat(str(value))
 
 
 def to_ib(ticker: str) -> str:
@@ -374,6 +384,36 @@ class IBKRGateway:
             log.warning("%s: what-if failed (%s)", symbol, exc)
             return None
         return None if excess > 1e300 else excess  # TWS reports "unset" as Double.MAX
+
+    def daily_bars(self, symbol: str, sessions: int) -> list[DailyBar]:  # noqa: D102
+        try:
+            contract = self._qualify(symbol)
+            # ADJUSTED_LAST matches Yahoo's split-adjusted bars; unadjusted TRADES would put the
+            # pre-split lows of a recent split far above the price.
+            bars = self.ib.reqHistoricalData(
+                contract,
+                endDateTime="",
+                durationStr=f"{sessions} D",
+                barSizeSetting="1 day",
+                whatToShow="ADJUSTED_LAST",
+                useRTH=True,
+                formatDate=1,
+                timeout=HISTORICAL_TIMEOUT_S,
+            )
+        except (OrderRejectedError, ValueError, OSError, ConnectionError) as exc:
+            log.warning("%s: TWS daily bars unavailable (%s)", symbol, exc)
+            return []
+        return [
+            DailyBar(
+                date=_bar_date(b.date),
+                open=float(b.open),
+                high=float(b.high),
+                low=float(b.low),
+                close=float(b.close),
+                volume=float(b.volume),
+            )
+            for b in bars
+        ]
 
     # ------------------------------------------------------------------ writes
     def _qualify(self, symbol: str) -> Stock:

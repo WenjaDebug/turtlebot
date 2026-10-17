@@ -14,6 +14,7 @@ Each entry is a bracket: parent order plus an attached GTC stop at the 10-day lo
 from __future__ import annotations
 
 import datetime as dt
+import json
 import logging
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -22,10 +23,12 @@ from dataclasses import dataclass, field
 from turtlebot.broker.gateway import BrokerGateway
 from turtlebot.broker.retry import Backoff
 from turtlebot.config import BlockSettings, Settings
-from turtlebot.data.provider import MarketDataProvider, recent_lows
+from turtlebot.data.provider import MarketDataProvider
+from turtlebot.data.quality import LOW_CHECK_KEY, LowIssueKind, LowsCheck, check_lows
 from turtlebot.domain.models import (
     Block,
     Candidate,
+    DailyBar,
     EntryMode,
     OrderAction,
     OrderEvent,
@@ -272,7 +275,11 @@ class TradingEngine:
             self.jobs.mark_done("reconcile")
 
     def load_lows(self, symbols: Sequence[str]) -> dict[str, float]:
-        """Lowest low of the last ``exit_period`` completed sessions per symbol."""
+        """Lowest low of the last ``exit_period`` completed sessions per symbol.
+
+        Yahoo lows are cross-checked against TWS bars (see :mod:`turtlebot.data.quality`); the
+        findings are logged, alerted and kept for the dashboard.
+        """
         today = self.clock().date()
         start = today - dt.timedelta(days=self.settings.strategy.history_days)
         prices = run_with_watchdog(
@@ -283,7 +290,64 @@ class TradingEngine:
             pump=self._pump,
             name="recent_lows",
         )
-        return recent_lows(prices, self.settings.strategy.exit_period, before=today)
+        quality = self.settings.data_quality
+        period = self.settings.strategy.exit_period
+        check = check_lows(
+            symbols,
+            prices,
+            self._broker_bars(symbols, period) if quality.cross_check_lows else None,
+            period=period,
+            before=today,
+            settings=quality,
+        )
+        self._record_low_check(symbols, check)
+        return check.lows
+
+    def _broker_bars(self, symbols: Sequence[str], period: int) -> dict[str, list[DailyBar]]:
+        bars: dict[str, list[DailyBar]] = {}
+        for symbol in symbols:
+            try:
+                # A few extra sessions: today's forming bar is dropped by the check.
+                bars[symbol] = self.gateway.daily_bars(symbol, period + 3)
+            except TurtleBotError as exc:
+                log.warning("%s: TWS daily bars unavailable (%s)", symbol, exc)
+        return bars
+
+    def _record_low_check(self, symbols: Sequence[str], check: LowsCheck) -> None:
+        """Log the findings and keep the latest per symbol for the dashboard."""
+        now = self.clock().isoformat(timespec="seconds")
+        for issue in check.issues:
+            log.warning(
+                "Data check %s %s: %s",
+                issue.kind.value,
+                issue.symbol,
+                issue.message,
+                extra={"ctx": {"event": "data.check", "kind": issue.kind.value}},
+            )
+        try:
+            latest = json.loads(self.store.get_meta(LOW_CHECK_KEY) or "{}")
+        except json.JSONDecodeError:
+            latest = {}
+        for symbol in symbols:
+            latest[symbol] = {
+                "ts": now,
+                "issues": [
+                    {"kind": i.kind.value, "message": i.message}
+                    for i in check.issues
+                    if i.symbol == symbol
+                ],
+            }
+        self.store.set_meta(LOW_CHECK_KEY, json.dumps(latest, sort_keys=True))
+        data_problems = [
+            i
+            for i in check.issues
+            if i.kind in (LowIssueKind.SOURCE_MISMATCH, LowIssueKind.UNVERIFIED)
+        ]
+        if data_problems:
+            self.notifier.notify(
+                "Turtle: price data check",
+                "; ".join(f"{i.symbol}: {i.message}" for i in data_problems)[:200],
+            )
 
     # ================================================================== universe & scan
     def _pump(self, seconds: float) -> None:

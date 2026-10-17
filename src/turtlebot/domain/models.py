@@ -194,6 +194,18 @@ class BrokerSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class DailyBar:
+    """One completed (or forming) daily session bar."""
+
+    date: dt.date
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+
+
+@dataclass(frozen=True, slots=True)
 class Fill:
     """A single execution."""
 

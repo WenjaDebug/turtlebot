@@ -100,7 +100,8 @@ The new design prevents both structurally:
    * a stop is cancelled only once its position is confirmed closed; the executor additionally refuses to cancel a SELL order for any symbol the broker still reports as held.
 4. **Stop ownership.** TWS only lets the API client id that placed an order change it. Stops placed by another client id (e.g. a repair script, or manually in TWS) are read via `reqAllOpenOrders()`, count as protection, are reported with symbol, order id and client id, and are never modified or cancelled. If TWS rejects a modification (e.g. error 103), the bot cancels the old stop and only places a replacement after TWS confirms the cancellation; otherwise it leaves the old stop in place and alerts. `turtlebot audit-orders` (read-only session) lists all working orders not owned by the bot.
 5. **Unverified stops.** Stops imported from the legacy state are marked unconfirmed; the first reconciliation reports any difference to the working TWS stop as `stop_price_mismatch` with both values.
-6. **Regression tests** replay the incident end to end (`tests/reconciliation/test_incident_20261012.py`): empty list, partially synced list, glitch persisting for 10 cycles, lost local state. In each case no stop is cancelled and no position is forgotten.
+6. **Checked price data.** Before a stop is trailed, the Yahoo 10-day low is compared with TWS's own (adjusted) daily bars; if they differ by more than 2 % the TWS low is used, and without TWS bars the stop is not trailed in that run. Warnings (log, notification, dashboard) flag lows far below the surrounding closes and the pattern of a pending cash takeover (jump on heavy volume, then a pinned price), where the trailing stop stays far below the price for up to 10 sessions. The dashboard also warns when a stop is more than 25 % below the price. None of this changes the strategy.
+7. **Regression tests** replay the incident end to end (`tests/reconciliation/test_incident_20261012.py`): empty list, partially synced list, glitch persisting for 10 cycles, lost local state. In each case no stop is cancelled and no position is forgotten.
 
 ## Setup
 
@@ -127,6 +128,7 @@ Run the migration right before switching over, while the legacy bot is stopped. 
 
 ```bash
 turtlebot run --dry-run --once   # connect read-only, reconcile, one scan, no orders
+turtlebot run --dry-run --reconcile-only  # read-only reconciliation, no scan
 turtlebot run --dry-run          # full schedule without orders (separate database)
 turtlebot run                    # paper trading - requires TURTLE_TRADING_ENABLED=true
 turtlebot dashboard              # http://127.0.0.1:8000
