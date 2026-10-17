@@ -1,0 +1,57 @@
+# --- Secrets & local configuration -----------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# --- Runtime state, journals, logs (contain account IDs and positions) -------
+var/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.log
+live_turtle_state*.json
+live_turtle_journal*.csv
+.sync_state.json
+*.tmp
+
+# --- Market-data caches & research outputs --------------------------------------
+.cache/
+*.pkl
+*.csv
+*.png
+!docs/**/*.png
+*.tar.gz
+charts_trend_following/
+reports/
+_backup_*/
+Claude outputs/
+*.save
+
+# --- Python -----------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# --- Tooling / OS -------------------------------------------------------------------
+.DS_Store
+.idea/
+.vscode/
+graphify-out/
+.claude/
