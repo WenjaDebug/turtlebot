@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 import numpy as np
@@ -128,7 +128,7 @@ def entry_order(
 
 
 def snapshot(
-    positions: dict[str, float] | None = None,
+    positions: Mapping[str, float] | None = None,
     orders: Sequence[BrokerOrder] = (),
     *,
     synced: bool = True,

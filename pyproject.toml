@@ -111,7 +111,7 @@ init_typed = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers --cov=turtlebot --cov-report=term-missing"
-filterwarnings = ["error::pytest.PytestUnraisableExceptionWarning"]
+filterwarnings = ["error::pytest.PytestUnraisableExceptionWarning", "error::ResourceWarning"]
 
 [tool.coverage.run]
 branch = true
