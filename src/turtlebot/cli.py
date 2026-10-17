@@ -26,8 +26,8 @@ from pathlib import Path
 from typing import IO
 
 from turtlebot.config import Settings, get_settings
-from turtlebot.domain.models import BrokerOrder
-from turtlebot.exceptions import NotPaperAccountError, TurtleBotError
+from turtlebot.domain.models import BrokerOrder, BrokerSnapshot
+from turtlebot.exceptions import BrokerConnectionError, NotPaperAccountError, TurtleBotError
 from turtlebot.logging_setup import configure_logging
 
 log = logging.getLogger("turtlebot.cli")
@@ -139,7 +139,12 @@ def foreign_orders(orders: Sequence[BrokerOrder], bot_client_id: int) -> list[Br
 
 
 def cmd_audit_orders(args: argparse.Namespace, settings: Settings) -> int:
-    """List working orders that the bot's client id does not own (read-only TWS session)."""
+    """List working orders that the bot's client id does not own (read-only TWS session).
+
+    Prints nothing but an error if the order list may be incomplete: a dropped connection
+    before ``openOrderEnd``, an unexpected disconnect during the session or an unsynced
+    position stream.
+    """
     from turtlebot.broker.ibkr import IBKRGateway
 
     with client_id_lock(settings.paths.lock_dir, settings.broker.dry_run_client_ids) as cid:
@@ -147,11 +152,34 @@ def cmd_audit_orders(args: argparse.Namespace, settings: Settings) -> int:
         gateway.connect()
         try:
             snapshot = gateway.snapshot()
+        except (ConnectionError, OSError, TimeoutError) as exc:
+            raise BrokerConnectionError(
+                f"audit incomplete, order request interrupted: {exc}"
+            ) from exc
         finally:
+            dropped = gateway.unexpected_disconnects
             gateway.disconnect()
-    foreign = foreign_orders(snapshot.orders, settings.broker.client_id)
-    out = sys.stdout
-    out.write(f"Bot client id: {settings.broker.client_id}\n")
+    return write_audit(snapshot, settings.broker.client_id, dropped, sys.stdout)
+
+
+def write_audit(snapshot: BrokerSnapshot, bot_client_id: int, dropped: int, out: IO[str]) -> int:
+    """Print the audit table; refuses (exit code 1) if the snapshot may be incomplete."""
+    if dropped or not snapshot.positions_synced:
+        log.error(
+            "Audit incomplete (unexpected disconnects: %d, positions synced: %s) - "
+            "no order list printed, run it again",
+            dropped,
+            snapshot.positions_synced,
+        )
+        return 1
+    foreign = foreign_orders(snapshot.orders, bot_client_id)
+    orphans = [o for o in snapshot.orders if o.is_stop and o.symbol not in snapshot.positions]
+    out.write(
+        f"Snapshot {snapshot.taken_at:%Y-%m-%d %H:%M:%S} UTC: connection stable, "
+        f"{len(snapshot.positions)} positions, {len(snapshot.orders)} relevant working orders "
+        f"(all client ids)\n"
+    )
+    out.write(f"Bot client id: {bot_client_id}\n")
     out.write(
         f"{'symbol':8s} {'order':>7s} {'perm id':>11s} {'client':>6s} {'type':5s} "
         f"{'qty':>8s} {'stop':>9s}  ref\n"
@@ -162,9 +190,12 @@ def cmd_audit_orders(args: argparse.Namespace, settings: Settings) -> int:
             f"{o.order_type:5s} {o.qty:>8g} {o.aux_price if o.aux_price is not None else '-':>9}  "
             f"{o.order_ref or '-'}\n"
         )
+    out.write(f"\n{len(foreign)} working order(s) not owned by client id {bot_client_id}.\n")
+    out.write(f"{len(orphans)} working stop(s) without a held position (short risk)")
     out.write(
-        f"\n{len(foreign)} working order(s) not owned by client id "
-        f"{settings.broker.client_id}.\n"
+        ":\n" + "".join(f"  {o.symbol} #{o.order_id} (client {o.client_id})\n" for o in orphans)
+        if orphans
+        else ".\n"
     )
     return 0
 

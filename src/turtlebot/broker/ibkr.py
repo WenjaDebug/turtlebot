@@ -115,6 +115,8 @@ class IBKRGateway:
         self._dead_order_ids: set[int] = set()
         self._connectivity_ok = True
         self._fx_cache: tuple[str, float] | None = None  # (hour key, rate)
+        self._closing = False
+        self.unexpected_disconnects = 0  # since the last connect()
 
     # ------------------------------------------------------------------ connection
     def connect(self) -> None:
@@ -142,11 +144,16 @@ class IBKRGateway:
             )
         self.ib.reqPnL(accounts[0])
         self._connectivity_ok = True
+        self.unexpected_disconnects = 0
         log.info("Connected to paper account %s (client id %d)", accounts[0], self.client_id)
 
     def disconnect(self) -> None:  # noqa: D102 - see protocol
         if self.ib.isConnected():
-            self.ib.disconnect()
+            self._closing = True
+            try:
+                self.ib.disconnect()
+            finally:
+                self._closing = False
 
     def is_connected(self) -> bool:  # noqa: D102
         return bool(self.ib.isConnected())
@@ -175,6 +182,12 @@ class IBKRGateway:
             self._connectivity_ok = True
 
     def _on_disconnected(self) -> None:
+        # ib_async fires disconnectedEvent for our own disconnect() too; only an unrequested
+        # disconnect is a lost connection.
+        if self._closing:
+            log.info("Disconnected from TWS")
+            return
+        self.unexpected_disconnects += 1
         log.warning("TWS connection lost")
 
     def _on_order_status(self, trade: Trade) -> None:
