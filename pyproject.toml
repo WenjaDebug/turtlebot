@@ -36,7 +36,7 @@ dependencies = [
 dev = [
     "pytest==9.1.1",
     "pytest-cov==7.1.0",
-    "httpx==0.28.1",
+    "httpx2==2.13.1",
     "mypy==2.4.0",
     "pandas-stubs==3.0.5.260914",
     "types-requests==2.33.0.20261006",
@@ -55,6 +55,7 @@ packages = ["src/turtlebot"]
 [tool.black]
 line-length = 100
 target-version = ["py312"]
+extend-exclude = "^/(legacy|dashboard)/"
 
 [tool.ruff]
 line-length = 100
