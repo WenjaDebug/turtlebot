@@ -586,11 +586,14 @@ class _Planner:
                 )
             if not all_stops:
                 price = max(new_low, p.stop) if new_low is not None else p.stop
+                origin = (
+                    " (unconfirmed, imported from legacy state)" if not p.stop_confirmed else ""
+                )
                 self.report(
                     DiscrepancyKind.MISSING_STOP,
                     Severity.WARNING,
                     symbol,
-                    f"stop {p.stop}",
+                    f"stop {p.stop}{origin}",
                     "no working stop order",
                     f"new stop SELL {_fmt_qty(qty)} @ {price}",
                 )

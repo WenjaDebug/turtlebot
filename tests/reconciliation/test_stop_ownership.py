@@ -419,3 +419,33 @@ def test_audit_filter_lists_orders_not_owned_by_the_bot() -> None:
     unknown = replace(foreign_stop("B", 2), client_id=None)
     result = foreign_orders([own, foreign_stop("SHOP", 24), unknown], BOT)
     assert [o.order_id for o in result] == [24, 2]
+
+
+def test_missing_stop_names_an_unverified_legacy_price() -> None:
+    local = position("SHOP", qty=114, stop=150.28).evolve(stop_confirmed=False)
+    p = plan([local], [], lows={"SHOP": 151.0})
+    (missing,) = p.discrepancies
+    assert missing.kind is DiscrepancyKind.MISSING_STOP
+    assert missing.local == "stop 150.28 (unconfirmed, imported from legacy state)"
+    assert [a.stop_price for a in actions(p, PlaceStop)] == [151.0]
+
+
+def test_v1_database_from_the_legacy_import_starts_with_unverified_stops(tmp_path: Path) -> None:
+    import sqlite3
+
+    from turtlebot.persistence.schema import MIGRATIONS
+
+    path = tmp_path / "v1.db"
+    conn = sqlite3.connect(path)
+    conn.executescript(MIGRATIONS[0])
+    conn.executemany(
+        "INSERT INTO positions (symbol, block, status, qty, stop, signal_price, created_at,"
+        " updated_at) VALUES (?, 1, ?, 10, 1.0, 1.0, '2026-10-12', '2026-10-12')",
+        [("SHOP", "open"), ("AAOI", "closed")],
+    )
+    conn.execute("PRAGMA user_version = 1")
+    conn.commit()
+    conn.close()
+    store = StateStore(path)
+    assert [p.stop_confirmed for p in store.active_positions()] == [False]
+    store.close()

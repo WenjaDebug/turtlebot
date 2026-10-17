@@ -68,3 +68,16 @@ def test_own_disconnect_is_not_reported_as_lost_connection(
     gw.ib.disconnectedEvent.emit()  # socket dropped by TWS
     assert "TWS connection lost" in caplog.text
     assert gw.unexpected_disconnects == 1
+
+
+def test_dry_run_session_judges_ownership_like_the_live_bot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gw = IBKRGateway(BrokerSettings(), 21, ["TURTLE"], readonly=True, owner_client_id=BOT)
+    monkeypatch.setattr(gw.ib, "isConnected", lambda: True)
+    monkeypatch.setattr(gw.ib, "reqPositions", list)
+    monkeypatch.setattr(gw.ib, "managedAccounts", lambda: ["DU123"])
+    monkeypatch.setattr(gw.ib, "reqAllOpenOrders", list)
+    snap = gw.snapshot()
+    assert snap.client_id == BOT
+    assert not snap.is_foreign(stop("SHOP", 24, client_id=BOT))

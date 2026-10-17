@@ -101,12 +101,21 @@ def cmd_run(args: argparse.Namespace, settings: Settings) -> int:
             "Use --dry-run, or set TURTLE_TRADING_ENABLED=true once you have approved a restart.\n"
         )
         return EXIT_REFUSED
+    if args.reconcile_only and not args.dry_run:
+        sys.stderr.write("--reconcile-only is only available with --dry-run.\n")
+        return EXIT_REFUSED
 
     candidates = settings.broker.dry_run_client_ids if args.dry_run else [settings.broker.client_id]
     with client_id_lock(settings.paths.lock_dir, candidates) as client_id:
         threads = raise_file_limit()
         store = StateStore(_db_path(settings, args.dry_run))
-        ibkr = IBKRGateway(settings.broker, client_id, list(settings.order_refs))
+        ibkr = IBKRGateway(
+            settings.broker,
+            client_id,
+            list(settings.order_refs),
+            readonly=args.dry_run,
+            owner_client_id=settings.broker.client_id,
+        )
         gateway: BrokerGateway = DryRunGateway(ibkr) if args.dry_run else ibkr
         engine = TradingEngine(
             settings,
@@ -118,7 +127,9 @@ def cmd_run(args: argparse.Namespace, settings: Settings) -> int:
             dry_run=args.dry_run,
         )
         try:
-            if args.once:
+            if args.reconcile_only:
+                engine.start()
+            elif args.once:
                 engine.run_once()
             else:
                 engine.run_forever()
@@ -297,6 +308,11 @@ def build_parser() -> argparse.ArgumentParser:
     run = sub.add_parser("run", help="run the trading engine")
     run.add_argument("--dry-run", action="store_true", help="never send orders")
     run.add_argument("--once", action="store_true", help="reconcile + one scan, then exit")
+    run.add_argument(
+        "--reconcile-only",
+        action="store_true",
+        help="with --dry-run: reconcile (incl. a missed stop update), no scan, then exit",
+    )
     run.add_argument("--max-entries", type=int, help="override new entries per day and block")
     run.set_defaults(func=cmd_run)
 

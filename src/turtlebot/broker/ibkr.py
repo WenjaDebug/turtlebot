@@ -98,9 +98,13 @@ class IBKRGateway:
         order_refs: Sequence[str],
         *,
         readonly: bool = False,
+        owner_client_id: int | None = None,
     ) -> None:
         self.settings = settings
         self.client_id = client_id
+        # Client id whose orders count as the bot's own in snapshots. A dry run connects with a
+        # spare id but must judge ownership like the live bot (its stops are not foreign).
+        self.owner_client_id = client_id if owner_client_id is None else owner_client_id
         self.order_refs = frozenset(order_refs)
         self.readonly = readonly
         self.ib = IB()
@@ -294,7 +298,7 @@ class IBKRGateway:
             orders=self._working_orders(set(positions)),
             positions_synced=synced,
             taken_at=dt.datetime.now(dt.UTC),
-            client_id=self.client_id,
+            client_id=self.owner_client_id,
         )
 
     def _working_orders(self, held: set[str]) -> list[BrokerOrder]:

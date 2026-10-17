@@ -132,9 +132,12 @@ MIGRATIONS: Final[tuple[str, ...]] = (
     );
     """,
     # v2 ---------------------------------------------------------------------------------------
-    # Stops imported from the legacy state file are unverified until compared with TWS.
+    # Stops imported from the legacy state file are unverified until compared with TWS. A v1
+    # database was only ever filled by that import (no reconciliation ran on it), so its active
+    # stops start unverified as well.
     """
     ALTER TABLE positions ADD COLUMN stop_confirmed INTEGER NOT NULL DEFAULT 1;
+    UPDATE positions SET stop_confirmed = 0 WHERE status IN ('pending', 'open');
     """,
 )
 

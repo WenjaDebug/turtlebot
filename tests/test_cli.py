@@ -110,3 +110,12 @@ def test_raise_file_limit_returns_bool() -> None:
 def test_parser_requires_command() -> None:
     with pytest.raises(SystemExit):
         cli.build_parser().parse_args([])
+
+
+def test_reconcile_only_requires_dry_run(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("TURTLE_TRADING_ENABLED", "true")
+    get_settings.cache_clear()
+    assert cli.main(["run", "--reconcile-only"]) == cli.EXIT_REFUSED
+    assert "--reconcile-only is only available with --dry-run" in capsys.readouterr().err
