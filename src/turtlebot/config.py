@@ -100,6 +100,7 @@ class ScheduleSettings(BaseModel):
     job_max_attempts: int = Field(3, ge=1)
     loop_interval_s: float = Field(30.0, gt=0)
     fill_wait_s: float = Field(30.0, ge=0)
+    account_snapshot_min: float = Field(15.0, gt=0, description="Equity curve sampling.")
 
     @property
     def tz(self) -> ZoneInfo:

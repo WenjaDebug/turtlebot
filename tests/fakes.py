@@ -57,6 +57,7 @@ class FakeBroker:
     connect_failures: int = 0
     margin_excess: float | None = 90_000.0
     calls: list[tuple[str, object]] = field(default_factory=list)
+    entries: list[tuple[str, float, EntryMode, float, str]] = field(default_factory=list)
     slept: float = 0.0
     _handler: OrderEventHandler | None = None
     _ids: itertools.count[int] = field(default_factory=lambda: itertools.count(1000))
@@ -134,7 +135,8 @@ class FakeBroker:
             aux_price=stop_price,
             parent_id=parent,
         )
-        self.calls.append(("place_entry", (symbol, qty, mode, stop_price, order_ref)))
+        self.calls.append(("place_entry", symbol))
+        self.entries.append((symbol, qty, mode, stop_price, order_ref))
         return EntryTicket(parent, stop)
 
     def place_stop(self, symbol: str, qty: float, stop_price: float, order_ref: str) -> int:
