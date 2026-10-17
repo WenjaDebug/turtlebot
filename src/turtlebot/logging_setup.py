@@ -82,7 +82,11 @@ def configure_logging(settings: LogSettings, log_dir: Path | None) -> None:
         log_dir: Directory for the JSON log files; ``None`` logs to the console only.
     """
     root = logging.getLogger()
-    root.handlers.clear()
+    orders = logging.getLogger(ORDER_LOGGER)
+    for logger in (root, orders):  # idempotent: close handlers of a previous configuration
+        for handler in list(logger.handlers):
+            logger.removeHandler(handler)
+            handler.close()
     root.setLevel(settings.level)
 
     console = logging.StreamHandler()
@@ -108,7 +112,7 @@ def configure_logging(settings: LogSettings, log_dir: Path | None) -> None:
         )
         orders_file.setFormatter(JsonFormatter())
         orders_file.setLevel(logging.DEBUG)
-        logging.getLogger(ORDER_LOGGER).addHandler(orders_file)
+        orders.addHandler(orders_file)
 
     for name, level in _QUIET.items():
         logging.getLogger(name).setLevel(level)
