@@ -92,3 +92,10 @@ def test_trading_days() -> None:
     assert not is_trading_day(dt.date(2026, 11, 26))  # Thanksgiving
     assert previous_trading_day(dt.date(2026, 10, 19)) == dt.date(2026, 10, 16)
     assert previous_trading_day(dt.date(2026, 11, 27)) == dt.date(2026, 11, 25)
+
+
+def test_env_example_documents_the_defaults() -> None:
+    """.env.example must stay in sync with the code defaults."""
+    root = __import__("pathlib").Path(__file__).resolve().parents[1]
+    example = Settings(_env_file=root / ".env.example")
+    assert example.model_dump() == Settings(_env_file=None).model_dump()
