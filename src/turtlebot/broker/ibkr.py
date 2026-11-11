@@ -43,6 +43,7 @@ from turtlebot.domain.models import (
     OrderAction,
     OrderEvent,
     OrderStatus,
+    combine_order_fills,
 )
 from turtlebot.exceptions import (
     BrokerConnectionError,
@@ -361,17 +362,21 @@ class IBKRGateway:
             except (OSError, TimeoutError) as exc:
                 log.warning("%s: executions unavailable (%s)", symbol, exc)
                 continue
-            if not fills:
-                continue
-            latest = max(fills, key=lambda f: f.execution.time)
-            result[symbol] = Fill(
-                symbol=symbol,
-                action=OrderAction.SELL,
-                qty=float(latest.execution.shares),
-                price=float(latest.execution.price),
-                time=latest.execution.time,
-                order_id=latest.execution.orderId,
+            combined = combine_order_fills(
+                [
+                    Fill(
+                        symbol=symbol,
+                        action=OrderAction.SELL,
+                        qty=float(f.execution.shares),
+                        price=float(f.execution.price),
+                        time=f.execution.time,
+                        order_id=f.execution.orderId,
+                    )
+                    for f in fills
+                ]
             )
+            if combined is not None:
+                result[symbol] = combined
         return result
 
     def margin_excess_after(self, symbol: str, qty: float) -> float | None:  # noqa: D102

@@ -8,6 +8,7 @@ persistence layer, the reconciliation and the broker adapter. None of them depen
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from enum import IntEnum, StrEnum
 
@@ -215,6 +216,40 @@ class Fill:
     price: float
     time: dt.datetime
     order_id: int | None = None
+
+
+def combine_order_fills(fills: Sequence[Fill]) -> Fill | None:
+    """Combine the partial executions of the most recent order into one fill.
+
+    TWS reports every partial execution separately; a stop that sells 848 shares may arrive as
+    several fills of e.g. 100 + 748 shares. Taking only the latest execution understates the
+    quantity and gives a wrong exit price. This returns the fill of the most recent order with
+    the summed quantity and the quantity-weighted average price.
+
+    Args:
+        fills: Executions of one symbol and side, in any order.
+
+    Returns:
+        ``None`` for an empty sequence, otherwise the combined fill of the latest order.
+    """
+    if not fills:
+        return None
+    latest = max(fills, key=lambda f: f.time)
+    if latest.order_id is None:
+        return latest
+    same_order = [f for f in fills if f.order_id == latest.order_id]
+    qty = sum(f.qty for f in same_order)
+    if qty <= 0:
+        return latest
+    price = sum(f.qty * f.price for f in same_order) / qty
+    return Fill(
+        symbol=latest.symbol,
+        action=latest.action,
+        qty=qty,
+        price=price,
+        time=latest.time,
+        order_id=latest.order_id,
+    )
 
 
 @dataclass(frozen=True, slots=True)
