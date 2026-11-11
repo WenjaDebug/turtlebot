@@ -71,7 +71,7 @@ def test_no_benchmark_for_a_realised_pnl_curve(store: StateStore, settings: Sett
 
 def test_phases_are_sorted_and_chained(store: StateStore) -> None:
     settings = Settings(
-        _env_file=None,  # type: ignore[call-arg]
+        _env_file=None,
         dashboard=DashboardSettings(
             phases=[
                 {"label": "v2", "start": "2026-10-27"},  # type: ignore[list-item]
@@ -114,4 +114,4 @@ def test_demo_benchmark_and_phases() -> None:
     assert series.index[-1] == pd.Timestamp(today)
     assert (series > 0).all()
     phases = demo_phases(today)
-    assert [p["start"] for p in phases] == sorted(p["start"] for p in phases)
+    assert [p.start for p in phases] == sorted(p.start for p in phases)

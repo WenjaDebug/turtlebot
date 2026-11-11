@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from turtlebot.config import PhaseSettings
 from turtlebot.domain.models import AccountSnapshot, Block, Candidate, Position, PositionStatus
 from turtlebot.persistence.store import DiscrepancyRecord, StateStore
 from turtlebot.timeutil import is_trading_day
@@ -208,11 +209,11 @@ def demo_benchmark(*, seed: int = 11, today: dt.date | None = None) -> pd.Series
     return pd.Series(closes, index=pd.DatetimeIndex(days), dtype=float)
 
 
-def demo_phases(today: dt.date | None = None) -> list[dict[str, object]]:
+def demo_phases(today: dt.date | None = None) -> list[PhaseSettings]:
     """Milestones for the demo equity chart (relative to ``today``)."""
     today = today or dt.date.today()  # noqa: DTZ011 - demo only
     return [
-        {"label": "Test mode", "start": today - dt.timedelta(days=140)},
-        {"label": "v1 · legacy bot", "start": today - dt.timedelta(days=90)},
-        {"label": "v2 · engine + reconciliation", "start": today - dt.timedelta(days=35)},
+        PhaseSettings(label="Test mode", start=today - dt.timedelta(days=140)),
+        PhaseSettings(label="v1 · legacy bot", start=today - dt.timedelta(days=90)),
+        PhaseSettings(label="v2 · engine + reconciliation", start=today - dt.timedelta(days=35)),
     ]

@@ -32,7 +32,8 @@ def test_chat_passes_context_and_parses_answer(tmp_path: Path) -> None:
     # The fake CLI echoes its arguments back as the answer.
     script = fake_cli(
         tmp_path,
-        'printf \'{"result": "%s", "session_id": "abc"}\' "$(echo "$@" | tr -d \'"\\n\' | head -c 300)"',
+        'printf \'{"result": "%s", "session_id": "abc"}\' '
+        '"$(echo "$@" | tr -d \'"\\n\' | head -c 300)"',
     )
     answer, session = run(ClaudeCliChat(str(script), tmp_path, 5))
     assert session == "abc"

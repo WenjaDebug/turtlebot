@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
 import threading
 import time
-import datetime as dt
 from collections.abc import Mapping, Sequence
 from typing import Protocol
 
@@ -67,7 +67,7 @@ class YahooQuotes:
             data = yf.download(
                 list(symbols), period="5d", progress=False, group_by="ticker", threads=True
             )
-        except Exception as exc:  # noqa: BLE001 - network/vendor errors must not break the UI
+        except Exception as exc:
             log.warning("Quote download failed: %s", exc)
             return {}
         prices: dict[str, float] = {}
@@ -137,7 +137,7 @@ class YahooBenchmark:
             close = data["Close"]
             if isinstance(close, pd.DataFrame):
                 close = close.iloc[:, 0]
-        except Exception as exc:  # noqa: BLE001 - network/vendor errors must not break the UI
+        except Exception as exc:
             log.warning("Benchmark download failed for %s: %s", symbol, exc)
             return pd.Series(dtype=float)
         series = pd.Series(close.dropna().astype(float))

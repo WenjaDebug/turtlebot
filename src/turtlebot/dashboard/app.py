@@ -106,7 +106,7 @@ class SnapshotHub:
         while True:
             try:
                 await self.tick()
-            except Exception:  # noqa: BLE001 - the hub must survive transient errors
+            except Exception:
                 log.exception("Snapshot broadcast failed")
             await asyncio.sleep(self.poll_s)
 

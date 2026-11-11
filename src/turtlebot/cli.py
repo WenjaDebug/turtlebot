@@ -334,13 +334,8 @@ def cmd_dashboard(args: argparse.Namespace, settings: Settings) -> int:
 
     if args.demo:
         db = settings.paths.data_dir / "demo.db"
-        demo_settings = settings.model_copy(
-            update={
-                "dashboard": settings.dashboard.model_validate(
-                    {**settings.dashboard.model_dump(), "phases": demo_phases()}
-                )
-            }
-        )
+        dashboard = settings.dashboard.model_copy(update={"phases": demo_phases()})
+        demo_settings = settings.model_copy(update={"dashboard": dashboard})
         app = create_app(
             demo_settings,
             db_path=db,

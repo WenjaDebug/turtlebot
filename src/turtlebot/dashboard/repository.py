@@ -12,7 +12,6 @@ import pandas as pd
 
 from turtlebot.analytics.metrics import compute_metrics, drawdown_series
 from turtlebot.config import Settings
-from turtlebot.data.quality import LOW_CHECK_KEY
 from turtlebot.dashboard.quotes import BenchmarkService, QuoteService
 from turtlebot.dashboard.schemas import (
     AccountView,
@@ -33,6 +32,7 @@ from turtlebot.dashboard.schemas import (
     TradeStatsView,
     TradeView,
 )
+from turtlebot.data.quality import LOW_CHECK_KEY
 from turtlebot.domain.models import Position, PositionStatus
 from turtlebot.engine.engine import HEARTBEAT_KEY, MODE_KEY
 from turtlebot.persistence.store import StateStore
@@ -318,7 +318,11 @@ class DashboardRepository:
                 for ts, v, d in zip(series.index, series.to_numpy(), dd.to_numpy(), strict=True)
             ],
             benchmark_symbol=symbol,
-            benchmark=self._benchmark(pd.DatetimeIndex(series.index), symbol) if relative and symbol else [],
+            benchmark=(
+                self._benchmark(pd.DatetimeIndex(series.index), symbol)
+                if relative and symbol
+                else []
+            ),
             phases=self._phases(),
         )
 
@@ -339,7 +343,7 @@ class DashboardRepository:
         )
         try:
             closes = self.benchmark.closes(symbol, days[0].date())
-        except Exception:  # noqa: BLE001 - a missing benchmark must never break the dashboard
+        except Exception:
             log.exception("Benchmark %s unavailable", symbol)
             return []
         if closes.empty:
