@@ -138,6 +138,12 @@ turtlebot backtest --universe .cache/live/eligible_20261009.json --start 2016-01
 
 `turtlebot run` refuses to place orders unless `TURTLE_TRADING_ENABLED=true` is set explicitly. The paused state is the default.
 
+The dashboard compares the account curve with a benchmark (SPY daily closes from Yahoo by default; `TURTLE_DASHBOARD__BENCHMARK_SYMBOL=""` turns it off) and can mark project phases on the equity chart:
+
+```bash
+TURTLE_DASHBOARD__PHASES='[{"label": "v1 legacy bot", "start": "2026-06-24"}, {"label": "v2 engine", "start": "2026-10-06"}]'
+```
+
 ### Operating mode
 
 The bot runs on a laptop during US market hours and is shut down overnight. Positions stay protected by their GTC stop orders at the broker while it is offline; on the next start it reconnects, reconciles against TWS and catches up on a missed stop update before the open. TWS disconnects at night are therefore expected and not treated as failures.

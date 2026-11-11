@@ -234,6 +234,13 @@ class PathSettings(BaseModel):
         return self.data_dir / "locks"
 
 
+class PhaseSettings(BaseModel):
+    """A project milestone drawn as a band under the equity curve (e.g. a strategy version)."""
+
+    label: str = Field(min_length=1, max_length=40)
+    start: dt.date
+
+
 class DashboardSettings(BaseModel):
     """FastAPI dashboard server."""
 
@@ -251,6 +258,27 @@ class DashboardSettings(BaseModel):
         lt=1,
         description="Warn if a stop is more than this fraction below the current price.",
     )
+    benchmark_symbol: str | None = Field(
+        "SPY",
+        description="Yahoo symbol plotted against the equity curve (S&P 500 ETF); empty disables.",
+    )
+    phases: list[PhaseSettings] = Field(
+        default_factory=list,
+        description="Milestones shown under the equity curve, e.g. "
+        '[{"label": "v2 engine", "start": "2026-10-27"}] (JSON in TURTLE_DASHBOARD__PHASES).',
+    )
+
+    @field_validator("benchmark_symbol")
+    @classmethod
+    def _blank_is_none(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip().upper() or None
+
+    @field_validator("phases")
+    @classmethod
+    def _sorted_phases(cls, value: list[PhaseSettings]) -> list[PhaseSettings]:
+        return sorted(value, key=lambda ph: ph.start)
 
 
 class LogSettings(BaseModel):

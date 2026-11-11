@@ -61,7 +61,7 @@ _claude_chats/
 
 # Local-only files (kept on disk, not part of the public repo)
 CLAUDE.md
-dashboard/
+/dashboard/
 legacy/repair_block1_positions.py
 legacy/research/turtle_breakout_live_prompt_v2.md
 legacy/research/debug_*.py

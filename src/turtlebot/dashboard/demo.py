@@ -9,7 +9,9 @@ import datetime as dt
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
+from turtlebot.config import PhaseSettings
 from turtlebot.domain.models import AccountSnapshot, Block, Candidate, Position, PositionStatus
 from turtlebot.persistence.store import DiscrepancyRecord, StateStore
 from turtlebot.timeutil import is_trading_day
@@ -195,3 +197,23 @@ def seed_demo_store(path: Path, *, seed: int = 7, today: dt.date | None = None) 
         store.set_meta("engine_heartbeat", now.isoformat(timespec="seconds"))
     store.close()
     return quotes
+
+
+def demo_benchmark(*, seed: int = 11, today: dt.date | None = None) -> pd.Series:
+    """Synthetic daily closes of an index ETF covering the demo history."""
+    rng = np.random.default_rng(seed)
+    today = today or dt.date.today()  # noqa: DTZ011 - demo only
+    days = [today - dt.timedelta(days=i) for i in range(150, -1, -1)]
+    days = [d for d in days if is_trading_day(d)]
+    closes = 560.0 * np.cumprod(1 + rng.normal(0.0004, 0.008, len(days)))
+    return pd.Series(closes, index=pd.DatetimeIndex(days), dtype=float)
+
+
+def demo_phases(today: dt.date | None = None) -> list[PhaseSettings]:
+    """Milestones for the demo equity chart (relative to ``today``)."""
+    today = today or dt.date.today()  # noqa: DTZ011 - demo only
+    return [
+        PhaseSettings(label="Test mode", start=today - dt.timedelta(days=140)),
+        PhaseSettings(label="v1 · legacy bot", start=today - dt.timedelta(days=90)),
+        PhaseSettings(label="v2 · engine + reconciliation", start=today - dt.timedelta(days=35)),
+    ]
