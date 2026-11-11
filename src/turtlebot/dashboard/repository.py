@@ -540,6 +540,33 @@ class DashboardRepository:
             for s in self.store.signals()
         ]
 
+    def reconciliations(self, limit: int = 10) -> list[dict[str, object]]:
+        """The latest reconciliation runs with their discrepancies, newest first."""
+        return [
+            {
+                "id": r.id,
+                "ts": r.ts.isoformat(),
+                "outcome": r.outcome,
+                "update_stops": r.update_stops,
+                "n_local": r.n_local,
+                "n_broker": r.n_broker,
+                "n_actions": r.n_actions,
+                "message": r.message,
+                "discrepancies": [
+                    {
+                        "kind": d.kind,
+                        "severity": d.severity,
+                        "symbol": d.symbol,
+                        "local": d.local,
+                        "broker": d.broker,
+                        "resolution": d.resolution,
+                    }
+                    for d in r.discrepancies
+                ],
+            }
+            for r in self.store.reconciliations(limit=limit)
+        ]
+
     def snapshot(self) -> Snapshot:
         """Everything pushed over the WebSocket."""
         positions = self.positions()

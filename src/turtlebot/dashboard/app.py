@@ -230,30 +230,7 @@ def create_app(
     def reconciliations(
         limit: Annotated[int, Query(ge=1, le=100)] = 10,
     ) -> list[dict[str, object]]:
-        return [
-            {
-                "id": r.id,
-                "ts": r.ts.isoformat(),
-                "outcome": r.outcome,
-                "update_stops": r.update_stops,
-                "n_local": r.n_local,
-                "n_broker": r.n_broker,
-                "n_actions": r.n_actions,
-                "message": r.message,
-                "discrepancies": [
-                    {
-                        "kind": d.kind,
-                        "severity": d.severity,
-                        "symbol": d.symbol,
-                        "local": d.local,
-                        "broker": d.broker,
-                        "resolution": d.resolution,
-                    }
-                    for d in r.discrepancies
-                ],
-            }
-            for r in state.reconciliations(limit=limit)
-        ]
+        return repo.reconciliations(limit=limit)
 
     @app.post("/api/v1/chat")
     async def ask(request: ChatRequest) -> ChatResponse:

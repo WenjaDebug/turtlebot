@@ -1,6 +1,6 @@
 // turtlebot desk: wires the live snapshot stream to the UI.
 
-import { getJSON, postJSON, subscribe } from "./api.js";
+import { getJSON, isStatic, postJSON, subscribe } from "./api.js";
 import { equitySeries, ready, renderEquity, renderStopHistogram } from "./charts.js";
 import {
   ago, dateShort, esc, isNum, miniMarkdown, money, pct, price, qty, ratio, time, tone,
@@ -67,7 +67,9 @@ function renderBanner(s, r) {
   delete banner.dataset.level;
   if (s.demo) {
     banner.hidden = false;
-    banner.innerHTML = "<strong>Demo mode.</strong> All figures are synthetic and generated for illustration.";
+    banner.innerHTML = isStatic
+      ? "<strong>Static demo.</strong> Synthetic data, frozen when this page was built. Run <code>turtlebot dashboard --demo</code> locally for the live version with the assistant."
+      : "<strong>Demo mode.</strong> All figures are synthetic and generated for illustration.";
   } else if (r && r.outcome !== "ok") {
     banner.hidden = false;
     banner.dataset.level = "warn";
@@ -414,7 +416,8 @@ function onSnapshot(snap) {
 }
 
 function onStream(s) {
-  if (s === "open") setPill("#pill-stream", "good", "Live");
+  if (s === "static") setPill("#pill-stream", "idle", "Static snapshot");
+  else if (s === "open") setPill("#pill-stream", "good", "Live");
   else if (s === "connecting") setPill("#pill-stream", "idle", "Connecting…");
   else setPill("#pill-stream", "bad", "Offline · retrying");
 }

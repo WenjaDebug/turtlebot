@@ -24,12 +24,14 @@ live_turtle_journal*.csv
 .cache/
 *.pkl
 *.csv
+!docs/data/*.csv
 *.png
 !docs/**/*.png
 *.tar.gz
 charts_trend_following/
 reports/
 _backup_*/
+_site/
 Claude outputs/
 *.save
 

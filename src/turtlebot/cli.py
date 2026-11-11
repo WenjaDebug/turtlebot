@@ -329,15 +329,13 @@ def cmd_dashboard(args: argparse.Namespace, settings: Settings) -> int:
     import uvicorn
 
     from turtlebot.dashboard.app import create_app
-    from turtlebot.dashboard.demo import demo_benchmark, demo_phases, seed_demo_store
+    from turtlebot.dashboard.demo import demo_benchmark, demo_settings, seed_demo_store
     from turtlebot.dashboard.quotes import StaticBenchmark, StaticQuotes
 
     if args.demo:
         db = settings.paths.data_dir / "demo.db"
-        dashboard = settings.dashboard.model_copy(update={"phases": demo_phases()})
-        demo_settings = settings.model_copy(update={"dashboard": dashboard})
         app = create_app(
-            demo_settings,
+            demo_settings(settings),
             db_path=db,
             quotes=StaticQuotes(seed_demo_store(db)),
             benchmark=StaticBenchmark(demo_benchmark()),
@@ -348,6 +346,16 @@ def cmd_dashboard(args: argparse.Namespace, settings: Settings) -> int:
     uvicorn.run(
         app, host=args.host or settings.dashboard.host, port=args.port or settings.dashboard.port
     )
+    return 0
+
+
+def cmd_export_demo(args: argparse.Namespace, settings: Settings) -> int:
+    """Write a static copy of the demo dashboard (for GitHub Pages)."""
+    from turtlebot.dashboard.export import export_static_demo
+
+    out = Path(args.out)
+    files = export_static_demo(out, settings)
+    log.info("Static demo written to %s (%d data files)", out, len(files))
     return 0
 
 
@@ -402,6 +410,10 @@ def build_parser() -> argparse.ArgumentParser:
     dash.add_argument("--host")
     dash.add_argument("--port", type=int)
     dash.set_defaults(func=cmd_dashboard)
+
+    export = sub.add_parser("export-demo", help="static demo dashboard for GitHub Pages")
+    export.add_argument("out", help="target directory, e.g. _site")
+    export.set_defaults(func=cmd_export_demo)
 
     bt = sub.add_parser("backtest", help="portfolio backtest on daily data")
     bt.add_argument("--universe", required=True, help="eligible_YYYYMMDD.json with a tickers list")
