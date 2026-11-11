@@ -10,6 +10,7 @@ deliberately thin; every decision is made in the tested layers above it.
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import logging
 import math
@@ -55,8 +56,11 @@ from turtlebot.logging_setup import log_order_event
 
 log = logging.getLogger(__name__)
 
-# Informational TWS messages (market data farm connections etc.).
-INFO_CODES: Final = frozenset({1102, 2104, 2106, 2107, 2108, 2119, 2158, 10349})
+# Informational TWS messages (market data farm connections etc.). 2103/2105/2157 report a farm
+# going offline, which happens every night during the IBKR server reset and is not actionable.
+INFO_CODES: Final = frozenset({1102, 2103, 2104, 2105, 2106, 2107, 2108, 2119, 2157, 2158, 10349})
+# Historical data permission errors (e.g. no forex market data subscription for IDEALPRO).
+NO_PERMISSION_CODES: Final = frozenset({162, 354, 10167})
 # Order id no longer valid at TWS: 103 duplicate id, 10147/10148 cancel/modify of unknown order.
 DEAD_ORDER_CODES: Final = frozenset({103, 10147, 10148})
 # Connectivity between TWS and IB servers lost / restored.
@@ -130,6 +134,7 @@ class IBKRGateway:
         self._dead_order_ids: set[int] = set()
         self._connectivity_ok = True
         self._fx_cache: tuple[str, float] | None = None  # (hour key, rate)
+        self._fx_from_tws = True  # cleared after a forex market data permission error
         self._closing = False
         self.unexpected_disconnects = 0  # since the last connect()
 
@@ -174,7 +179,15 @@ class IBKRGateway:
         return bool(self.ib.isConnected())
 
     def sleep(self, seconds: float) -> None:  # noqa: D102
-        self.ib.sleep(seconds)
+        try:
+            self.ib.sleep(seconds)
+        except asyncio.CancelledError:
+            # ib_async cancels pending waits when TWS drops the connection (e.g. the nightly
+            # reset). That is a lost connection, handled by the engine's reconnect logic - not
+            # an error in the main loop.
+            if self.ib.isConnected():
+                raise
+            log.info("Wait interrupted by TWS disconnect")
 
     def set_order_event_handler(self, handler: OrderEventHandler) -> None:  # noqa: D102
         self._handler = handler
@@ -189,6 +202,8 @@ class IBKRGateway:
     def _on_error(self, req_id: int, code: int, message: str, contract: object) -> None:
         level = logging.INFO if code in INFO_CODES else logging.WARNING
         log.log(level, "TWS %d (reqId %d): %s", code, req_id, message)
+        if code in NO_PERMISSION_CODES and "IDEALPRO" in message:
+            self._fx_from_tws = False
         if code in DEAD_ORDER_CODES and req_id > 0:
             self._dead_order_ids.add(req_id)
         if code in CONNECTIVITY_LOST:
@@ -243,6 +258,37 @@ class IBKRGateway:
         hour = dt.datetime.now(dt.UTC).strftime("%Y%m%d%H")
         if self._fx_cache and self._fx_cache[0] == hour:
             return self._fx_cache[1]
+        rate = self._account_exchange_rate()
+        if rate is None and self._fx_from_tws:
+            rate = self._tws_forex_rate(base)
+        if rate is None:
+            try:
+                history = yf.Ticker(f"USD{base}=X").history(period="5d")
+                rate = 1.0 / float(history["Close"].iloc[-1])
+            except Exception as exc:
+                if self._fx_cache:
+                    log.warning("FX unavailable (%s), reusing last rate", exc)
+                    return self._fx_cache[1]
+                raise BrokerDataUnavailableError(f"no FX rate USD{base}") from exc
+        self._fx_cache = (hour, rate)
+        return rate
+
+    def _account_exchange_rate(self) -> float | None:
+        """USD per base unit from the account's own ``ExchangeRate`` value (no market data needed).
+
+        TWS reports ``ExchangeRate`` per currency as the factor that converts that currency into
+        the account's base currency, so the USD row holds "base per USD".
+        """
+        for v in self.ib.accountValues(self._account_id()):
+            if v.tag == "ExchangeRate" and v.currency == "USD":
+                try:
+                    base_per_usd = float(v.value)
+                except ValueError:
+                    return None
+                return 1.0 / base_per_usd if base_per_usd > 0 else None
+        return None
+
+    def _tws_forex_rate(self, base: str) -> float | None:
         rate: float | None = None
         try:
             bars = self.ib.reqHistoricalData(
@@ -254,19 +300,9 @@ class IBKRGateway:
                 useRTH=False,
             )
             if bars:
-                rate = 1.0 / bars[-1].close  # USDCHF = CHF per USD
+                rate = 1.0 / bars[-1].close  # USD<base> quotes base units per USD
         except (OSError, ValueError, TimeoutError) as exc:
             log.warning("Forex USD%s from TWS unavailable (%s)", base, exc)
-        if rate is None:
-            try:
-                history = yf.Ticker(f"USD{base}=X").history(period="5d")
-                rate = 1.0 / float(history["Close"].iloc[-1])
-            except Exception as exc:
-                if self._fx_cache:
-                    log.warning("FX unavailable (%s), reusing last rate", exc)
-                    return self._fx_cache[1]
-                raise BrokerDataUnavailableError(f"no FX rate USD{base}") from exc
-        self._fx_cache = (hour, rate)
         return rate
 
     def account(self) -> AccountSnapshot:  # noqa: D102

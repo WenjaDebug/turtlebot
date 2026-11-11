@@ -114,3 +114,57 @@ def test_tws_daily_bars_are_requested_adjusted_and_parsed(monkeypatch: pytest.Mo
 
     monkeypatch.setattr(gw.ib, "reqHistoricalData", broken)
     assert gw.daily_bars("BMBL", 13) == []
+
+
+def test_wait_interrupted_by_tws_disconnect_is_not_an_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+
+    gw = IBKRGateway(BrokerSettings(), 21, ["TURTLE"], readonly=True)
+
+    def cancelled(_: float) -> None:
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(gw.ib, "sleep", cancelled)
+    monkeypatch.setattr(gw.ib, "isConnected", lambda: False)
+    gw.sleep(5)  # nightly TWS reset: swallowed, the engine reconnects
+    monkeypatch.setattr(gw.ib, "isConnected", lambda: True)
+    with pytest.raises(asyncio.CancelledError):
+        gw.sleep(5)  # still connected: a genuine cancellation (e.g. Ctrl+C) propagates
+
+
+def test_fx_rate_comes_from_the_account_without_market_data(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    gw = IBKRGateway(BrokerSettings(), 21, ["TURTLE"], readonly=True)
+    monkeypatch.setattr(gw.ib, "managedAccounts", lambda: ["DU123"])
+    monkeypatch.setattr(
+        gw.ib,
+        "accountValues",
+        lambda _acct: [SimpleNamespace(tag="ExchangeRate", currency="USD", value="0.80")],
+    )
+
+    def no_market_data(*_: object, **__: object) -> list[object]:
+        raise AssertionError("forex market data must not be requested")
+
+    monkeypatch.setattr(gw.ib, "reqHistoricalData", no_market_data)
+    assert gw._usd_per_base("CHF") == pytest.approx(1.25)
+
+
+def test_forex_permission_error_disables_tws_forex_requests() -> None:
+    gw = IBKRGateway(BrokerSettings(), 21, ["TURTLE"], readonly=True)
+    gw._on_error(7, 162, "No market data permissions for IDEALPRO CASH", None)
+    assert gw._fx_from_tws is False
+
+
+@pytest.mark.parametrize("code", [2103, 2105, 2157])
+def test_nightly_farm_disconnects_are_logged_as_info(
+    code: int, caplog: pytest.LogCaptureFixture
+) -> None:
+    gw = IBKRGateway(BrokerSettings(), 21, ["TURTLE"], readonly=True)
+    with caplog.at_level(logging.INFO):
+        gw._on_error(-1, code, "farm connection is broken:usfarm", None)
+    assert [r.levelno for r in caplog.records] == [logging.INFO]

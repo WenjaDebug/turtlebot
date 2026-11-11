@@ -67,6 +67,7 @@ HEARTBEAT_KEY = "engine_heartbeat"
 MODE_KEY = "engine_mode"
 NOTIFY_MAX_LINES = 4
 ERROR_ALERT_INTERVAL_S = 3600.0
+DISCONNECT_LOG_INTERVAL_S = 900.0  # one outage WARNING per 15 min
 
 
 @dataclass(slots=True)
@@ -74,6 +75,7 @@ class _ConnectionState:
     down_since: dt.datetime | None = None
     last_alert: dt.datetime | None = None
     delays: Iterator[float] | None = None  # backoff delays while disconnected
+    last_log: dt.datetime | None = None  # last WARNING about the outage (throttled)
 
 
 @dataclass(slots=True)
@@ -235,9 +237,19 @@ class TradingEngine:
             raise
         except (BrokerConnectionError, OSError) as exc:
             delay = next(state.delays) if state.delays is not None else self.backoff.initial
-            log.warning(
-                "TWS unreachable for %.0f min (%s), retrying in %.0f s", down_min, exc, delay
+            loud = (
+                state.last_log is None
+                or (now - state.last_log).total_seconds() >= DISCONNECT_LOG_INTERVAL_S
             )
+            log.log(
+                logging.WARNING if loud else logging.DEBUG,
+                "TWS unreachable for %.0f min (%s), retrying in %.0f s",
+                down_min,
+                exc,
+                delay,
+            )
+            if loud:
+                state.last_log = now
             return float(delay)
         log.info("Connection restored after %.0f min", down_min)
         if down_min >= broker.disconnect_alert_after_min:
