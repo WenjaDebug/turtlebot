@@ -25,7 +25,12 @@ from starlette.concurrency import run_in_threadpool
 from turtlebot import __version__
 from turtlebot.config import Settings
 from turtlebot.dashboard.chat import ChatError, ChatService, ClaudeCliChat, UnavailableChat
-from turtlebot.dashboard.quotes import QuoteService, YahooQuotes
+from turtlebot.dashboard.quotes import (
+    BenchmarkService,
+    QuoteService,
+    YahooBenchmark,
+    YahooQuotes,
+)
 from turtlebot.dashboard.repository import DashboardRepository
 from turtlebot.dashboard.schemas import (
     ChatRequest,
@@ -112,6 +117,7 @@ def create_app(
     db_path: Path | None = None,
     store: StateStore | None = None,
     quotes: QuoteService | None = None,
+    benchmark: BenchmarkService | None = None,
     chat: ChatService | None = None,
     clock: Clock | None = None,
     demo: bool = False,
@@ -123,6 +129,7 @@ def create_app(
         db_path: State database (ignored if ``store`` is given).
         store: Injected store (tests).
         quotes: Injected quote service (default: Yahoo with TTL cache).
+        benchmark: Injected benchmark closes (default: Yahoo daily closes; none in demo mode).
         chat: Injected chat service (default: Claude Code CLI if enabled).
         clock: Time source.
         demo: Mark the data as synthetic in the UI.
@@ -137,6 +144,7 @@ def create_app(
         quotes or YahooQuotes(ttl_s=dash.price_refresh_s),
         settings,
         clock or system_clock(settings.schedule.tz),
+        benchmark=benchmark or (None if demo or store is not None else YahooBenchmark()),
         demo=demo,
     )
     chat_service = chat or (

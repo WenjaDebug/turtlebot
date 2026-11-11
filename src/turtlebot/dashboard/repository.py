@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import logging
 import re
 from collections.abc import Mapping, Sequence
 
@@ -12,9 +13,10 @@ import pandas as pd
 from turtlebot.analytics.metrics import compute_metrics, drawdown_series
 from turtlebot.config import Settings
 from turtlebot.data.quality import LOW_CHECK_KEY
-from turtlebot.dashboard.quotes import QuoteService
+from turtlebot.dashboard.quotes import BenchmarkService, QuoteService
 from turtlebot.dashboard.schemas import (
     AccountView,
+    BenchmarkPoint,
     BlockView,
     BotStatus,
     EquityPoint,
@@ -22,6 +24,7 @@ from turtlebot.dashboard.schemas import (
     EventView,
     MetricsView,
     Overview,
+    PhaseView,
     PositionView,
     ReconciliationSummary,
     SignalView,
@@ -34,6 +37,8 @@ from turtlebot.domain.models import Position, PositionStatus
 from turtlebot.engine.engine import HEARTBEAT_KEY, MODE_KEY
 from turtlebot.persistence.store import StateStore
 from turtlebot.timeutil import Clock
+
+log = logging.getLogger(__name__)
 
 BLOCK_LABELS = {1: "Core breakout", 2: "High-conviction filter"}
 ALERT_KINDS = ("foreign_client_order", "stop_price_mismatch")
@@ -64,6 +69,7 @@ class DashboardRepository:
         quotes: Price source for open positions.
         settings: Application settings.
         clock: Time source.
+        benchmark: Daily closes of the comparison index (``None`` disables it).
         demo: Whether the data is synthetic.
     """
 
@@ -74,12 +80,14 @@ class DashboardRepository:
         settings: Settings,
         clock: Clock,
         *,
+        benchmark: BenchmarkService | None = None,
         demo: bool = False,
     ) -> None:
         self.store = store
         self.quotes = quotes
         self.settings = settings
         self.clock = clock
+        self.benchmark = benchmark
         self.demo = demo
 
     # ------------------------------------------------------------------ alerts
@@ -300,6 +308,7 @@ class DashboardRepository:
         # Net liquidation has a level -> relative drawdown; a P&L curve does not -> absolute.
         relative = source == "account"
         dd = drawdown_series(series) if relative else self._pnl_drawdown(series)
+        symbol = self.settings.dashboard.benchmark_symbol
         return EquityView(
             source=source,  # type: ignore[arg-type]
             currency=currency,
@@ -308,7 +317,51 @@ class DashboardRepository:
                 EquityPoint(ts=ts.to_pydatetime(), equity=float(v), drawdown=float(d))
                 for ts, v, d in zip(series.index, series.to_numpy(), dd.to_numpy(), strict=True)
             ],
+            benchmark_symbol=symbol,
+            benchmark=self._benchmark(pd.DatetimeIndex(series.index), symbol) if relative and symbol else [],
+            phases=self._phases(),
         )
+
+    def _benchmark(self, index: pd.DatetimeIndex, symbol: str) -> list[BenchmarkPoint]:
+        """Benchmark closes on the equity timestamps (last close on or before each day).
+
+        The benchmark is only drawn for an account curve: comparing a realised-P&L curve with an
+        index level would be meaningless.
+        """
+        if self.benchmark is None or index.empty:
+            return []
+        tz = self.settings.schedule.tz
+        days = pd.DatetimeIndex(
+            [
+                pd.Timestamp((ts if ts.tzinfo is None else ts.astimezone(tz)).date())
+                for ts in index.to_pydatetime()
+            ]
+        )
+        try:
+            closes = self.benchmark.closes(symbol, days[0].date())
+        except Exception:  # noqa: BLE001 - a missing benchmark must never break the dashboard
+            log.exception("Benchmark %s unavailable", symbol)
+            return []
+        if closes.empty:
+            return []
+        closes = closes.sort_index()
+        aligned = closes.reindex(closes.index.union(days)).ffill().reindex(days)
+        return [
+            BenchmarkPoint(ts=ts.to_pydatetime(), close=float(v))
+            for ts, v in zip(index, aligned.to_numpy(), strict=True)
+            if pd.notna(v)
+        ]
+
+    def _phases(self) -> list[PhaseView]:
+        phases = self.settings.dashboard.phases
+        return [
+            PhaseView(
+                label=ph.label,
+                start=ph.start,
+                end=phases[i + 1].start if i + 1 < len(phases) else None,
+            )
+            for i, ph in enumerate(phases)
+        ]
 
     @staticmethod
     def _pnl_drawdown(pnl: pd.Series) -> pd.Series:

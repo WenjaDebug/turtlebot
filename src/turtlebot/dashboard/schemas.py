@@ -155,6 +155,21 @@ class EquityPoint(BaseModel):
     drawdown: float
 
 
+class BenchmarkPoint(BaseModel):
+    """Benchmark close aligned to an equity point."""
+
+    ts: dt.datetime
+    close: float
+
+
+class PhaseView(BaseModel):
+    """A project milestone (strategy version, test period) on the equity time axis."""
+
+    label: str
+    start: dt.date
+    end: dt.date | None = Field(description="Start of the next phase; null for the current one")
+
+
 class EquityView(BaseModel):
     """Equity curve and its source."""
 
@@ -162,6 +177,12 @@ class EquityView(BaseModel):
     currency: str
     drawdown_unit: Literal["fraction", "currency"]
     points: list[EquityPoint]
+    benchmark_symbol: str | None = None
+    benchmark: list[BenchmarkPoint] = Field(
+        default_factory=list,
+        description="Benchmark closes on the equity timestamps (empty if unavailable)",
+    )
+    phases: list[PhaseView] = Field(default_factory=list)
 
 
 class EventView(BaseModel):

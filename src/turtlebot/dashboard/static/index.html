@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>turtlebot · desk</title>
   <meta name="description" content="Live view of the turtle breakout paper-trading bot.">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3 27 9.5v13L16 29 5 22.5v-13z' fill='%2317171a'/%3E%3Cpath d='M16 9l6 3.5v7L16 23l-6-3.5v-7z' fill='%23f4f2ec'/%3E%3C/svg%3E">
+  <meta name="color-scheme" content="dark light">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3 27 9.5v13L16 29 5 22.5v-13z' fill='%23e8ecf2'/%3E%3Cpath d='M16 10l5 3v6l-5 3-5-3v-6z' fill='%230e1116'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -18,18 +19,21 @@
 
   <header class="topbar">
     <div class="brand">
-      <svg class="brand__mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3 27 9.5v13L16 29 5 22.5v-13z"/><path class="brand__inner" d="M16 9l6 3.5v7L16 23l-6-3.5v-7z"/></svg>
+      <svg class="brand__mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3 27 9.5v13L16 29 5 22.5v-13z"/><path class="brand__inner" d="M16 10l5 3v6l-5 3-5-3v-6z"/></svg>
       <span class="brand__name">turtlebot</span>
       <span class="brand__sub">desk</span>
     </div>
     <ul class="status" aria-label="System status">
       <li class="pill" id="pill-engine"><span class="dot"></span><span class="pill__text">Engine —</span></li>
       <li class="pill" id="pill-recon"><span class="dot"></span><span class="pill__text">Reconciliation —</span></li>
+      <li class="pill" id="pill-trading"><span class="dot"></span><span class="pill__text">Trading —</span></li>
       <li class="pill" id="pill-stream"><span class="dot"></span><span class="pill__text">Connecting…</span></li>
     </ul>
     <div class="topbar__right">
-      <time class="clock" id="clock" aria-label="New York time">--:-- ET</time>
-      <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle colour theme" title="Theme: auto">
+      <span class="market" id="market">—</span>
+      <span class="vrule" aria-hidden="true"></span>
+      <time class="clock num" id="clock" aria-label="New York time">--:--:-- ET</time>
+      <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle colour theme" title="Theme">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9A7 7 0 0 1 12 3z"/></svg>
       </button>
     </div>
@@ -37,127 +41,150 @@
 
   <div class="banner" id="banner" hidden></div>
 
-  <div class="layout">
-    <main id="main" class="main">
-
-      <section class="hero" aria-labelledby="hero-title">
-        <div class="hero__primary">
-          <h1 id="hero-title" class="eyebrow">Net liquidation</h1>
+  <main id="main" class="desk">
+    <!-- ------------------------------------------------------------ headline numbers -->
+    <section class="strip" aria-label="Headline figures">
+      <article class="card hero">
+        <div class="hero__text">
+          <h1 class="eyebrow eyebrow--hero">Net liquidation</h1>
           <p class="hero__value num" id="netliq">—</p>
           <p class="hero__meta">
             <span id="daypnl" class="num">—</span>
-            <span class="sep" aria-hidden="true">/</span>
             <span id="totalret" class="num">—</span>
-            <span class="muted" id="asof"></span>
           </p>
         </div>
-        <dl class="kpis" id="kpis">
-          <div class="kpi"><dt>Sharpe</dt><dd class="num" data-k="sharpe">—</dd></div>
-          <div class="kpi"><dt>Sortino</dt><dd class="num" data-k="sortino">—</dd></div>
-          <div class="kpi"><dt>Max drawdown</dt><dd class="num" data-k="max_drawdown">—</dd></div>
-          <div class="kpi"><dt>Current drawdown</dt><dd class="num" data-k="current_drawdown">—</dd></div>
-          <div class="kpi"><dt>Win rate</dt><dd class="num" data-k="win_rate">—</dd></div>
-          <div class="kpi"><dt>Profit factor</dt><dd class="num" data-k="profit_factor">—</dd></div>
-          <div class="kpi"><dt>Exposure</dt><dd class="num" data-k="exposure_usd">—</dd></div>
-          <div class="kpi"><dt>Open risk to stops</dt><dd class="num" data-k="open_risk_usd">—</dd></div>
-        </dl>
-      </section>
+        <svg class="spark" id="spark" viewBox="0 0 120 56" preserveAspectRatio="none" aria-hidden="true"></svg>
+      </article>
+      <dl class="kpis" id="kpis">
+        <div class="card kpi"><dt class="eyebrow">vs S&amp;P 500</dt><dd class="kpi__value num" data-k="vs_bench">—</dd><dd class="kpi__sub" data-s="vs_bench"></dd></div>
+        <div class="card kpi"><dt class="eyebrow">Exposure</dt><dd class="kpi__value num" data-k="exposure">—</dd><dd class="kpi__sub"><span class="meter"><span class="meter__fill" id="exposure-meter"></span></span><span data-s="exposure"></span></dd></div>
+        <div class="card kpi"><dt class="eyebrow">Open risk to stops</dt><dd class="kpi__value num" data-k="open_risk">—</dd><dd class="kpi__sub" data-s="open_risk"></dd></div>
+        <div class="card kpi"><dt class="eyebrow">Max drawdown</dt><dd class="kpi__value num" data-k="max_dd">—</dd><dd class="kpi__sub" data-s="max_dd"></dd></div>
+        <div class="card kpi"><dt class="eyebrow">Profit factor</dt><dd class="kpi__value num" data-k="pf">—</dd><dd class="kpi__sub" data-s="pf"></dd></div>
+        <div class="card kpi"><dt class="eyebrow">Sharpe (ann.)</dt><dd class="kpi__value num" data-k="sharpe">—</dd><dd class="kpi__sub" data-s="sharpe"></dd></div>
+      </dl>
+    </section>
 
-      <section class="panel" aria-labelledby="equity-title">
-        <header class="panel__head">
-          <h2 id="equity-title">Equity <span class="muted">&amp; drawdown</span></h2>
+    <!-- ------------------------------------------------------------ equity -->
+    <section class="card panel area-equity" aria-labelledby="equity-title">
+      <header class="panel__head">
+        <div>
+          <h2 id="equity-title">Equity <span id="equity-vs">vs S&amp;P 500</span></h2>
+          <p class="panel__sub" id="equity-note">—</p>
+        </div>
+        <div class="panel__tools">
+          <ul class="legend" id="equity-legend" aria-label="Legend"></ul>
           <div class="seg" role="tablist" aria-label="Time range" id="range">
             <button role="tab" data-range="21">1M</button>
             <button role="tab" data-range="63">3M</button>
             <button role="tab" data-range="0" aria-selected="true">All</button>
           </div>
-        </header>
-        <p class="panel__note muted" id="equity-note"></p>
-        <div class="chart chart--equity" id="chart-equity" role="img" aria-label="Equity curve with drawdown below"></div>
-      </section>
+        </div>
+      </header>
+      <div class="chart chart--equity" id="chart-equity" role="img" aria-label="Equity curve against the S&amp;P 500, project phases and drawdown"></div>
+    </section>
 
-      <section class="panel" aria-labelledby="positions-title">
-        <header class="panel__head">
-          <h2 id="positions-title">Open positions <span class="count num" id="pos-count"></span></h2>
-          <div class="legend" aria-hidden="true">
-            <span class="chip chip--b1">Block 1</span>
-            <span class="chip chip--b2">Block 2</span>
+    <!-- ------------------------------------------------------------ blocks -->
+    <section class="card panel area-blocks" aria-labelledby="blocks-title">
+      <header class="panel__head">
+        <div>
+          <h2 id="blocks-title">Blocks</h2>
+          <p class="panel__sub" id="blocks-sub">Two independent slot pools fed by one scan</p>
+        </div>
+        <span class="panel__stat num" id="slots-used">—</span>
+      </header>
+      <div class="blocks" id="blocks"></div>
+    </section>
+
+    <!-- ------------------------------------------------------------ book -->
+    <section class="card panel area-book" aria-labelledby="book-title">
+      <header class="panel__head">
+        <div>
+          <h2 id="book-title">Book</h2>
+          <p class="panel__sub" id="book-sub">—</p>
+        </div>
+        <div class="panel__tools">
+          <div class="seg" role="tablist" aria-label="Block filter" id="block-filter">
+            <button role="tab" data-block="0" aria-selected="true">All</button>
+            <button role="tab" data-block="1">Block 1</button>
+            <button role="tab" data-block="2">Block 2</button>
           </div>
-        </header>
-        <div class="table-wrap">
-          <table class="grid" id="positions">
-            <thead>
-              <tr>
-                <th scope="col">Symbol</th>
-                <th scope="col" class="r">Qty</th>
-                <th scope="col" class="r">Entry</th>
-                <th scope="col" class="r">Last</th>
-                <th scope="col" class="r">P&amp;L</th>
-                <th scope="col">Cushion to stop</th>
-                <th scope="col" class="r">Stop</th>
-                <th scope="col" class="r hide-sm">Days</th>
-              </tr>
-            </thead>
-            <tbody><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="split">
-        <div class="panel" aria-labelledby="blocks-title">
-          <header class="panel__head"><h2 id="blocks-title">P&amp;L by block</h2></header>
-          <div class="blocks" id="blocks"></div>
-          <div class="chart chart--blocks" id="chart-blocks" role="img" aria-label="Realised and unrealised P&amp;L per block"></div>
-        </div>
-        <div class="panel" aria-labelledby="book-title">
-          <header class="panel__head">
-            <h2 id="book-title">Book</h2>
-            <div class="seg" role="tablist" aria-label="Book view" id="book-tabs">
-              <button role="tab" data-tab="trades" aria-selected="true">Closed trades</button>
-              <button role="tab" data-tab="signals">Latest signals</button>
-            </div>
-          </header>
-          <div class="table-wrap table-wrap--scroll">
-            <table class="grid grid--compact" id="book"><tbody></tbody></table>
+          <div class="seg" role="tablist" aria-label="Book view" id="book-tabs">
+            <button role="tab" data-tab="open" aria-selected="true">Open</button>
+            <button role="tab" data-tab="trades">Closed</button>
+            <button role="tab" data-tab="signals">Signals</button>
           </div>
         </div>
-      </section>
-    </main>
-
-    <aside class="rail" aria-label="Desk assistant and activity">
-      <div class="rail__tabs seg seg--full" role="tablist" id="rail-tabs">
-        <button role="tab" data-pane="chat" aria-selected="true">Assistant</button>
-        <button role="tab" data-pane="activity">Activity <span class="badge num" id="activity-badge" hidden></span></button>
+      </header>
+      <div class="table-wrap">
+        <table class="grid" id="book"><tbody><tr><td class="empty">Loading…</td></tr></tbody></table>
       </div>
+    </section>
 
-      <section class="pane pane--chat" id="pane-chat" aria-label="Assistant">
-        <p class="pane__intro">
-          Ask about positions, signals or the strategy. Answers use the live state shown here.
-          <span class="muted">Read-only, never places orders.</span>
-        </p>
-        <ol class="messages" id="messages" aria-live="polite"></ol>
+    <!-- ------------------------------------------------------------ risk -->
+    <section class="card panel area-risk" aria-labelledby="risk-title">
+      <header class="panel__head">
+        <div>
+          <h2 id="risk-title">Risk</h2>
+          <p class="panel__sub">Stop distance, concentration and safety guards</p>
+        </div>
+      </header>
+      <h3 class="eyebrow eyebrow--section"><span>Stop distance</span><span class="muted">% below last price · positions</span></h3>
+      <div class="chart chart--hist" id="chart-hist" role="img" aria-label="Number of positions by distance to their stop"></div>
+      <h3 class="eyebrow eyebrow--section"><span>Largest risk to stop</span><span class="muted">loss if every stop fills</span></h3>
+      <ol class="bars" id="risk-bars"></ol>
+      <ul class="guards" id="guards" aria-label="Safety guards"></ul>
+    </section>
+
+    <!-- ------------------------------------------------------------ rail -->
+    <aside class="rail" aria-label="Assistant and activity">
+      <section class="card assistant" aria-labelledby="assistant-title">
+        <header class="assistant__head">
+          <span class="assistant__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9z"/></svg>
+          </span>
+          <div>
+            <h2 id="assistant-title">Assistant</h2>
+            <p class="assistant__sub num">Claude Code · local</p>
+          </div>
+          <span class="badge-ro" title="The assistant reads the dashboard state. It cannot place, change or cancel orders.">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+            read-only
+          </span>
+        </header>
+        <ol class="messages" id="messages" aria-live="polite">
+          <li class="msg msg--intro">Ask about positions, stops, signals or the strategy. Answers use the live state shown on this page.</li>
+        </ol>
         <div class="suggestions" id="suggestions">
+          <button type="button">Summarize today</button>
+          <button type="button">Explain the last reconciliation</button>
           <button type="button">Which positions are closest to their stop?</button>
-          <button type="button">How does block 2 compare to block 1?</button>
-          <button type="button">Summarise today's signals</button>
         </div>
         <form class="composer" id="composer">
           <label class="visually-hidden" for="prompt">Message</label>
-          <textarea id="prompt" rows="1" maxlength="2000" placeholder="Ask the desk…" required></textarea>
+          <textarea id="prompt" rows="1" maxlength="2000" placeholder="Ask about positions, trades or logs…" required></textarea>
           <button type="submit" class="send" aria-label="Send">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h14M13 6l6 6-6 6"/></svg>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
           </button>
         </form>
       </section>
 
-      <section class="pane pane--activity" id="pane-activity" aria-label="Activity" hidden>
+      <section class="card panel activity" aria-labelledby="activity-title">
+        <header class="panel__head">
+          <h2 id="activity-title">Activity</h2>
+          <div class="seg seg--sm" role="tablist" aria-label="Activity filter" id="feed-filter">
+            <button role="tab" data-filter="all" aria-selected="true">All</button>
+            <button role="tab" data-filter="orders">Orders</button>
+            <button role="tab" data-filter="stops">Stops</button>
+          </div>
+        </header>
         <div class="recon" id="recon"></div>
         <ol class="feed" id="feed"></ol>
       </section>
     </aside>
-  </div>
+  </main>
 
-  <footer class="footer muted">
+  <footer class="footer">
     Paper-trading research project · not investment advice · <a href="/api/docs">API</a>
   </footer>
 </body>

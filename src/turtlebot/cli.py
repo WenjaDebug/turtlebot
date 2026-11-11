@@ -329,12 +329,25 @@ def cmd_dashboard(args: argparse.Namespace, settings: Settings) -> int:
     import uvicorn
 
     from turtlebot.dashboard.app import create_app
-    from turtlebot.dashboard.demo import seed_demo_store
-    from turtlebot.dashboard.quotes import StaticQuotes
+    from turtlebot.dashboard.demo import demo_benchmark, demo_phases, seed_demo_store
+    from turtlebot.dashboard.quotes import StaticBenchmark, StaticQuotes
 
     if args.demo:
         db = settings.paths.data_dir / "demo.db"
-        app = create_app(settings, db_path=db, quotes=StaticQuotes(seed_demo_store(db)), demo=True)
+        demo_settings = settings.model_copy(
+            update={
+                "dashboard": settings.dashboard.model_validate(
+                    {**settings.dashboard.model_dump(), "phases": demo_phases()}
+                )
+            }
+        )
+        app = create_app(
+            demo_settings,
+            db_path=db,
+            quotes=StaticQuotes(seed_demo_store(db)),
+            benchmark=StaticBenchmark(demo_benchmark()),
+            demo=True,
+        )
     else:
         app = create_app(settings, db_path=settings.paths.db_path)
     uvicorn.run(
