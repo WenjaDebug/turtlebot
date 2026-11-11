@@ -30,7 +30,9 @@ _RESERVED: Final = frozenset(logging.makeLogRecord({}).__dict__) | {"message", "
 _QUIET: Final = {
     "ib_async": logging.WARNING,
     "ib_async.wrapper": logging.CRITICAL,  # TWS errors are logged by the adapter itself
-    "ib_async.client": logging.WARNING,
+    # Connection failures surface as BrokerConnectionError and are logged (throttled) by the
+    # engine; ib_async would otherwise log two ERROR lines per reconnect attempt.
+    "ib_async.client": logging.CRITICAL,
     "yfinance": logging.CRITICAL,
     "peewee": logging.WARNING,
     "urllib3": logging.WARNING,

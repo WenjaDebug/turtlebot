@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import threading
 from collections.abc import Sequence
 from pathlib import Path
@@ -434,6 +435,27 @@ class TestLifecycle:
         titles = [t for t, _ in notifier.messages]
         assert "Turtle: no connection to TWS" in titles
         assert "Turtle: connection restored" in titles
+
+    def test_long_outage_logs_one_warning_per_quarter_hour(
+        self,
+        engine: TradingEngine,
+        broker: FakeBroker,
+        clock: MutableClock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        # Laptop closed overnight: TWS is gone for hours, the log must not fill up.
+        engine._sleep = lambda _s: None
+        broker.connected = False
+        broker.connect_failures = 100
+        with caplog.at_level(logging.DEBUG, logger="turtlebot.engine.engine"):
+            for _ in range(10):  # 10 attempts over 30 minutes
+                engine.step()
+                clock.advance(minutes=3)
+        warnings = [
+            r for r in caplog.records if r.levelno == logging.WARNING and "unreachable" in r.msg
+        ]
+        assert len(warnings) == 2  # at 0 and at 15 minutes
+        assert sum("unreachable" in r.msg for r in caplog.records) == 10
 
     def test_non_paper_account_is_fatal(self, engine: TradingEngine, broker: FakeBroker) -> None:
         broker.connected = False

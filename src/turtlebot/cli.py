@@ -7,6 +7,9 @@ Commands:
     dashboard       Serve the web dashboard (``--demo`` uses synthetic data).
     backtest        Run the portfolio backtest on cached/downloaded daily data.
     audit-orders    Read-only: list working orders not owned by the bot's client id.
+    import-executions  Fill in unknown exit prices from an IBKR trade export (CSV).
+    confirm-closed  Close a position you have verified as sold in TWS, without waiting for
+                    the reconciliation's confirmation cycles.
     config          Print the effective configuration (secrets masked).
 """
 
@@ -257,6 +260,64 @@ def cmd_migrate(args: argparse.Namespace, settings: Settings) -> int:
     return 0
 
 
+def cmd_import_executions(args: argparse.Namespace, settings: Settings) -> int:
+    """Backfill exit prices from an IBKR trade export."""
+    from turtlebot.executions import backfill_exit_prices, load_trade_export
+    from turtlebot.persistence.store import StateStore
+
+    executions = load_trade_export(args.csv)
+    store = StateStore(_db_path(settings, args.dry_run))
+    try:
+        results = backfill_exit_prices(
+            store, executions, apply=args.apply, now=dt.datetime.now(dt.UTC)
+        )
+    finally:
+        store.close()
+    out = sys.stdout
+    out.write(f"{len(executions)} executions read, {len(results)} closed positions checked\n")
+    for r in results:
+        price = f"{r.exit_price:.4f}" if r.exit_price is not None else "-"
+        out.write(f"  {r.symbol:6s} {r.status:13s} {price:>10s}  {r.detail}\n")
+    if not args.apply and any(r.status == "would_update" for r in results):
+        out.write("Nothing written. Re-run with --apply to store these prices.\n")
+    return 0
+
+
+def cmd_confirm_closed(args: argparse.Namespace, settings: Settings) -> int:
+    """Close an active position that was verified as sold in TWS."""
+    from turtlebot.persistence.store import StateStore
+
+    store = StateStore(_db_path(settings, args.dry_run))
+    try:
+        p = store.active_position(args.symbol.upper())
+        if p is None:
+            sys.stderr.write(f"{args.symbol.upper()}: no active position\n")
+            return 1
+        if not args.yes:
+            sys.stderr.write(
+                f"{p.symbol}: block {int(p.block)}, {p.qty:g} shares, stop {p.stop}. "
+                "Only confirm if TWS shows no position. Re-run with --yes to close it.\n"
+            )
+            return EXIT_REFUSED
+        now = dt.datetime.now(dt.UTC)
+        closed = store.close_position(
+            p, reason="confirmed closed manually", exit_price=args.price, closed_at=now
+        )
+        store.record_event(
+            "MANUAL_CLOSE",
+            ts=now,
+            symbol=p.symbol,
+            block=p.block,
+            qty=p.qty,
+            price=args.price,
+            details={"missing_cycles": p.missing_cycles},
+        )
+    finally:
+        store.close()
+    sys.stdout.write(f"{closed.symbol}: closed (confirmed manually)\n")
+    return 0
+
+
 def cmd_config(args: argparse.Namespace, settings: Settings) -> int:
     """Print the effective configuration as JSON."""
     sys.stdout.write(json.dumps(settings.model_dump(mode="json"), indent=2) + "\n")
@@ -347,6 +408,21 @@ def build_parser() -> argparse.ArgumentParser:
         "audit-orders", help="read-only: list working orders not owned by the bot's client id"
     )
     audit.set_defaults(func=cmd_audit_orders)
+
+    imp = sub.add_parser(
+        "import-executions", help="fill in unknown exit prices from an IBKR trade export"
+    )
+    imp.add_argument("csv", type=Path, help="Flex Query or Activity Statement CSV")
+    imp.add_argument("--apply", action="store_true", help="write the prices (default: preview)")
+    imp.add_argument("--dry-run", action="store_true", help="use the dry-run database")
+    imp.set_defaults(func=cmd_import_executions)
+
+    conf = sub.add_parser("confirm-closed", help="close a position you verified as sold in TWS")
+    conf.add_argument("symbol")
+    conf.add_argument("--price", type=float, help="exit price, if known")
+    conf.add_argument("--yes", action="store_true", help="really close it")
+    conf.add_argument("--dry-run", action="store_true", help="use the dry-run database")
+    conf.set_defaults(func=cmd_confirm_closed)
 
     cfg = sub.add_parser("config", help="print the effective configuration")
     cfg.set_defaults(func=cmd_config)

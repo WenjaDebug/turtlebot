@@ -138,6 +138,22 @@ turtlebot backtest --universe .cache/live/eligible_20261009.json --start 2016-01
 
 `turtlebot run` refuses to place orders unless `TURTLE_TRADING_ENABLED=true` is set explicitly. The paused state is the default.
 
+### Operating mode
+
+The bot runs on a laptop during US market hours and is shut down overnight. Positions stay protected by their GTC stop orders at the broker while it is offline; on the next start it reconnects, reconciles against TWS and catches up on a missed stop update before the open. TWS disconnects at night are therefore expected and not treated as failures.
+
+### Exit accounting
+
+TWS reports executions through the API only for a short time. If a position disappears while the bot is offline, the reconciliation waits for several runs before treating it as closed, and the exit price stays unknown. Two commands close that gap:
+
+```bash
+turtlebot import-executions trades.csv           # preview: match an IBKR trade export to closed positions
+turtlebot import-executions trades.csv --apply   # store exact exit prices (VWAP of all partial fills)
+turtlebot confirm-closed HTZ --price 6.12 --yes  # close a position you verified as sold in TWS
+```
+
+The import only updates a position if the SELL executions between its entry and close add up to its full quantity; everything else is reported and left untouched. Partial executions of one stop order are always combined into a single exit at their volume-weighted price.
+
 ### Logs
 
 * `var/log/turtlebot.jsonl`: everything, one JSON object per line (`jq 'select(.level=="WARNING")'`)
