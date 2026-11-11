@@ -55,3 +55,14 @@ coverage.xml
 .vscode/
 graphify-out/
 .claude/
+
+# Local copies of Claude Code chat transcripts (never commit)
+_claude_chats/
+
+# Local-only files (kept on disk, not part of the public repo)
+CLAUDE.md
+dashboard/
+legacy/repair_block1_positions.py
+legacy/research/turtle_breakout_live_prompt_v2.md
+legacy/research/debug_*.py
+legacy/research/test_connection.py

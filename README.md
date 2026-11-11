@@ -2,7 +2,7 @@
 
 **A Turtle/Donchian breakout trading bot for Interactive Brokers paper accounts, with a SQLite-backed state store, a safety-first reconciliation and a real-time dashboard.**
 
-[![CI](https://github.com/OWNER/turtlebot/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
+[![CI](https://github.com/WenjaDebug/turtlebot/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue)
 ![mypy](https://img.shields.io/badge/mypy-strict-success)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
@@ -157,7 +157,7 @@ Test highlights: regression test that the signal is identical to the legacy impl
 
 ## Legacy code
 
-`legacy/` keeps the original monolithic bot and the research scripts for traceability; `dashboard/` is the old Streamlit dashboard. Neither is imported by `src/`.
+`legacy/` keeps the original monolithic bot (v1) and the research scripts that led to the strategy, for traceability. Nothing in `src/` imports from it.
 
 ## License
 

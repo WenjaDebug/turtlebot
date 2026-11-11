@@ -1,6 +1,6 @@
 # Install once with:  pre-commit install
-# legacy/ and the old Streamlit dashboard/ are kept verbatim for traceability.
-exclude: ^(legacy|dashboard)/
+# legacy/ is kept verbatim for traceability.
+exclude: ^legacy/
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0

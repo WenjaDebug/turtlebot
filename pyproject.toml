@@ -55,13 +55,13 @@ packages = ["src/turtlebot"]
 [tool.black]
 line-length = 100
 target-version = ["py312"]
-extend-exclude = "^/(legacy|dashboard)/"
+extend-exclude = "^/legacy/"
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
 src = ["src", "tests"]
-extend-exclude = ["legacy", "dashboard"]
+extend-exclude = ["legacy"]
 
 [tool.ruff.lint]
 select = [
