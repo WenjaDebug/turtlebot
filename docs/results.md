@@ -12,16 +12,26 @@ judge a trend-following strategy, so treat this as a progress report, not a trac
 
 ## Headline
 
+Strategy results under the production rules. The two test-mode days at the start (05–06 Oct) were
+a functional test of order routing with different rules and are not counted here; they are shown
+separately below.
+
 | | Value | Note |
 |---|---|---|
-| **Trades under the production rules** | **+9,300 USD** (+0.8 %) | entries from 13 Oct, test-mode trades excluded, realised and unrealised |
-| **Account since the v2 engine (27 Oct)** | **+0.9 %** | 967,287 → 976,137 CHF |
-| Net liquidation 05 Oct → 11 Nov | 999,928 → 976,137 CHF | as reported by TWS, includes open positions |
-| Total return, whole account incl. test mode | −2.4 % | realised and unrealised P&L, after commissions, in CHF |
+| **Trades under the production rules** | **+9,300 USD** (+0.8 %) | entries from 13 Oct, realised and unrealised, to 11 Nov |
+| **Trades of the v2 engine** | **+9,700 USD** (+0.8 %) | entries from 27 Oct, to 11 Nov |
+| S&P 500 over the same windows | −2.4 % / −1.3 % | from the close of the first entry day |
+| Average exposure | 37 % (max 62 %) | 1.5 % of equity per position, up to 40 positions |
+| Beta to the S&P 500 | 0.40 | correlation 0.79, 26 trading days |
+
+### Whole account, including the test-mode days
+
+| | Value | Note |
+|---|---|---|
+| Net liquidation 05 Oct → 11 Nov | 999,928 → 976,137 CHF (−2.4 %) | as reported by TWS, after commissions; test-mode trades −35,600 USD |
+| Since the v2 engine went live (27 Oct) | +0.9 % | 967,287 → 976,137 CHF |
 | Max drawdown | −3.7 % (daily) / −4.0 % (intraday low, 06 Nov) | |
 | Volatility, annualised | 10.6 % | S&P 500 over the same days: 19.7 % |
-| Beta to the S&P 500 | 0.40 | correlation 0.79, 26 trading days |
-| Average exposure | 37 % (max 62 %) | 1.5 % of equity per position, up to 40 positions |
 | Positions | 66 (26 closed, 40 open) | |
 
 Raw data: [`data/paper_account.csv`](data/paper_account.csv). The chart is rendered by
@@ -63,7 +73,6 @@ names fell hard while the typical stock rose.
 |---|---|---|
 | **Production rules**, entries 13 Oct – 11 Nov | **+0.8 %** (+9,300 USD) | **−2.4 %** |
 | **v2 engine trades**, 27 Oct – 11 Nov | **+0.8 %** (+9,700 USD) | **−1.3 %** |
-| Whole account incl. test mode (functional test), 02 Oct – 11 Nov | −2.4 % | −1.3 % |
 
 Other indices, 02 Oct – 11 Nov 2026:
 
@@ -81,9 +90,9 @@ SPY (daily correlation 0.994), so expect an error of a few tenths of a percentag
 Under the production rules the bot gained while the S&P 500 fell, and it did so with less than
 half of the market's exposure (beta 0.4). Trade returns are the P&L in USD, before commissions,
 relative to the account value of about 1.2 million USD; each window starts at the close of its
-first entry day. Including the two test-mode days, whose only purpose was to check order
-routing, the account finished level with the index; those test trades alone cost about 3 % of
-the account. None of these differences is statistically meaningful over a few weeks.
+first entry day. The two test-mode days, whose only purpose was to check order routing, are
+not part of these figures; they cost about 3 % of the account, and the whole account including them
+stood at −2.4 % against −1.3 % for the index. None of these differences is statistically meaningful over a few weeks.
 
 ## What the data does say
 
