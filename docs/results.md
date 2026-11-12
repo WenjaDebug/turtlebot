@@ -14,8 +14,8 @@ judge a trend-following strategy, so treat this as a progress report, not a trac
 
 | | Value | Note |
 |---|---|---|
-| **Trades under the production rules** | **+6,700 USD** | entries from 13 Oct, test-mode trades excluded, as of 09 Nov (table below) |
-| **Account since the v2 engine (27 Oct)** | **+0.9 %** in CHF, +0.4 % in USD | 967,287 → 976,137 CHF; the franc weakened on 11 Nov |
+| **Trades under the production rules** | **+9,300 USD** (+0.8 %) | entries from 13 Oct, test-mode trades excluded, realised and unrealised |
+| **Account since the v2 engine (27 Oct)** | **+0.9 %** | 967,287 → 976,137 CHF |
 | Net liquidation 05 Oct → 11 Nov | 999,928 → 976,137 CHF | as reported by TWS, includes open positions |
 | Total return, whole account incl. test mode | −2.4 % | realised and unrealised P&L, after commissions, in CHF |
 | Max drawdown | −3.7 % (daily) / −4.0 % (intraday low, 06 Nov) | |
@@ -44,7 +44,9 @@ under the production rules is roughly flat to positive in total.
 | **Total** | 64 | 26 (4) | 38 (23) | −55,500 USD | +26,600 USD | **−28,900 USD** |
 
 *Per-trade figures in USD, reconstructed from entry and exit prices as of 09 Nov, before
-commissions. The CHF account value above is the authoritative number; both give −2.3 % on 09 Nov.*
+commissions. The CHF account value above is the authoritative number; both give −2.3 % on 09 Nov.
+By the 11 Nov close the totals were: test mode −35,600 USD, v1 −400 USD, v2 +9,700 USD,
+so +9,300 USD under the production rules.*
 
 **Why realised P&L alone is misleading here.** A breakout system cuts losers quickly and lets
 winners run, so for weeks the closed trades are mostly the losers. Closed-trade statistics
@@ -59,17 +61,17 @@ names fell hard while the typical stock rose.
 
 | Window | Bot | S&P 500 (cap-weighted) |
 |---|---|---|
-| **Production rules**, entries 13 Oct – 09 Nov | **+0.6 %** (+6,700 USD) | **−3.3 %** |
-| **v2 engine**, 27 Oct – 11 Nov, in USD | **+0.4 %** | **−0.6 %** |
-| Whole account incl. test mode (functional test), 02 Oct – 09 Nov | −2.3 % | −2.2 % |
+| **Production rules**, entries 13 Oct – 11 Nov | **+0.8 %** (+9,300 USD) | **−2.4 %** |
+| **v2 engine trades**, 27 Oct – 11 Nov | **+0.8 %** (+9,700 USD) | **−1.3 %** |
+| Whole account incl. test mode (functional test), 02 Oct – 11 Nov | −2.4 % | −1.3 % |
 
-Other indices, 02 Oct – 09 Nov 2026:
+Other indices, 02 Oct – 11 Nov 2026:
 
 | Index | Return |
 |---|---|
-| S&P 500, equal-weighted | +5.7 % |
-| S&P 400, cap-weighted | +1.3 % |
-| S&P 600, cap-weighted | +1.6 % |
+| S&P 500, equal-weighted | +6.5 % |
+| S&P 400, cap-weighted | +1.7 % |
+| S&P 600, cap-weighted | +2.0 % |
 
 *Index returns were rebuilt from the constituents' closing prices in the bot's cache, weighted by
 market cap and counting dual share classes (GOOG/GOOGL, FOX/FOXA, NWS/NWSA) once. Over the last
@@ -77,8 +79,9 @@ market cap and counting dual share classes (GOOG/GOOGL, FOX/FOXA, NWS/NWSA) once
 SPY (daily correlation 0.994), so expect an error of a few tenths of a percentage point.*
 
 Under the production rules the bot gained while the S&P 500 fell, and it did so with less than
-half of the market's exposure (beta 0.4). The production-rules return is the trades' P&L relative
-to the account value. Including the two test-mode days, whose only purpose was to check order
+half of the market's exposure (beta 0.4). Trade returns are the P&L in USD, before commissions,
+relative to the account value of about 1.2 million USD; each window starts at the close of its
+first entry day. Including the two test-mode days, whose only purpose was to check order
 routing, the account finished level with the index; those test trades alone cost about 3 % of
 the account. None of these differences is statistically meaningful over a few weeks.
 
