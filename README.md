@@ -26,7 +26,7 @@ turtlebot scans about 2,200 liquid US stocks every afternoon for 20-day breakout
 | | Bot | S&P 500 |
 |---|---|---|
 | **All trades under the production rules** (13 Oct – 11 Nov, test-mode trades excluded) | **+0.8 %** (+9,300 USD, realised and unrealised) | −2.4 % |
-| **Trades since the v2 engine took over** (27 Oct – 11 Nov) | **+0.8 %** (+9,700 USD) | −1.3 % |
+| **Account since the v2 engine took over** (27 Oct – 11 Nov) | **+0.9 %** | −0.6 % |
 | Exposure and beta | 37 % invested on average, beta 0.4 | |
 
 <picture>
