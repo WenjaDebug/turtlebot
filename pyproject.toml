@@ -44,6 +44,9 @@ dev = [
     "black==26.10.1",
     "pre-commit==4.7.0",
 ]
+docs = [
+    "matplotlib==3.11.2",  # scripts/plot_paper_account.py
+]
 
 [project.scripts]
 turtlebot = "turtlebot.cli:main"

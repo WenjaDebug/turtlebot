@@ -1,0 +1,118 @@
+# Paper-trading results
+
+**As of 11 Nov 2026, US close.** IBKR paper account, base currency CHF, about 1 million CHF of
+simulated capital. These are real paper results from the full period since the first trade.
+Nothing is cut out, including the weeks that went badly. Five and a half weeks is far too short to
+judge a trend-following strategy, so treat this as a progress report, not a track record.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="img/paper-account-dark.png">
+  <img alt="Paper account net liquidation since the first trade, with the three project phases" src="img/paper-account-light.png">
+</picture>
+
+## Headline
+
+| | Value | Note |
+|---|---|---|
+| Net liquidation 05 Oct → 11 Nov | 999,928 → 976,137 CHF | as reported by TWS, includes open positions |
+| **Total return** | **−2.4 %** | realised and unrealised P&L, after commissions, in CHF |
+| Since the v2 engine went live (27 Oct) | **+0.9 %** | 967,287 → 976,137 CHF |
+| Max drawdown | −3.7 % (daily) / −4.0 % (intraday low, 06 Nov) | |
+| Volatility, annualised | 10.6 % | S&P 500 over the same days: 20.6 % |
+| Beta to the S&P 500 | 0.40 | correlation 0.79, 26 trading days |
+| Average exposure | 37 % (max 62 %) | 1.5 % of equity per position, up to 40 positions |
+| Positions | 66 (26 closed, 40 open) | |
+
+Raw data: [`data/paper_account.csv`](data/paper_account.csv). The chart is rendered by
+[`scripts/plot_paper_account.py`](../scripts/plot_paper_account.py). Before 27 Oct the account
+value only exists in the legacy bot's log (one value per start), so the early part of the curve
+has gaps; from 27 Oct on, the engine records a snapshot on every loop.
+
+## Where the loss came from
+
+Almost the whole loss comes from the first two days, when the bot still ran in **test mode**:
+a looser signal (10-day breakout, 1.3× volume, hourly intraday scans) whose only purpose was
+to prove that order routing, fills and stops work end to end. Everything bought since then
+under the production rules is roughly flat to positive in total.
+
+| Phase | Positions | Closed (winners) | Open (in profit) | Realised | Unrealised | Total |
+|---|---|---|---|---|---|---|
+| Test mode, entries 05–06 Oct | 20 | 17 (2) | 3 (3) | −39,200 USD | +3,600 USD | **−35,600 USD** |
+| v1 legacy bot, production rules, 13–26 Oct | 17 | 8 (2) | 9 (7) | −11,400 USD | +11,200 USD | **−100 USD** |
+| v2 turtlebot engine, from 27 Oct | 27 | 1 (0) | 26 (13) | −4,900 USD | +11,800 USD | **+6,800 USD** |
+| **Total** | 64 | 26 (4) | 38 (23) | −55,500 USD | +26,600 USD | **−28,900 USD** |
+
+*Per-trade figures in USD, reconstructed from entry and exit prices as of 09 Nov, before
+commissions. The CHF account value above is the authoritative number; both give −2.3 % on 09 Nov.*
+
+**Why realised P&L alone is misleading here.** A breakout system cuts losers quickly and lets
+winners run, so for weeks the closed trades are mostly the losers. Closed-trade statistics
+(win rate 15 %, profit factor 0.03) say little while the winners are still open: REPL +40 %,
+XNCR +32 %, APOG +17 %, ORKA +16 %, APP +15 % at the time of the review. That is why every number
+on this page uses total equity, realised plus unrealised.
+
+## Against the market
+
+The weeks from early October to early November were a split market: a handful of mega-cap tech
+names fell hard while the typical stock rose.
+
+| 02 Oct – 09 Nov 2026 | Return |
+|---|---|
+| Bot (strategy, USD) | −2.3 % |
+| S&P 500, cap-weighted | −3.8 % |
+| Nasdaq-100 | −10.4 % |
+| S&P 500, equal-weighted | +5.3 % |
+| S&P 400 / S&P 600 | about +0.6 % each |
+| Bot universe, equal-weighted | −4.8 % |
+
+*Index returns were rebuilt from the constituent prices in the bot's cache (correlation 0.99 with
+SPY where both exist), because index data was not available for the full window.*
+
+With a beta of 0.4 the bot lost less than the S&P 500, but mainly because it was less than half
+invested. Adjusted for that lower market exposure it trailed a passive position with the same risk
+by roughly 0.5 to 1 percentage point. None of these differences is statistically meaningful over
+26 trading days.
+
+## What the data does say
+
+* **The stops do their job.** Holding the 26 closed positions until 09 Nov instead of stopping
+  out would have cost −88,400 USD instead of −55,500 USD.
+* **The signal had an edge.** The 586 production signals since 12 Oct were on average +2.3 %
+  ahead five days later, against −0.6 % for the universe; 70 % were up after ten days. This is
+  before stops and on a short history, so it is a hint, not a proof.
+* **Losers are large because initial stops are wide.** The initial stop sits at the 10-day low,
+  on average 27 % below the entry (range 11–59 %). A stopped-out trade lost 14.9 % on average.
+* **Ranking by breakout strength attracts takeover targets.** Five positions jumped 29–72× on
+  volume after an acquisition announcement and have barely moved since. They occupy 5 of 40 slots
+  with almost no upside. The bot already flags the pattern (`possible_takeover`); excluding such
+  signals from allocation is the next change on the list.
+* **Execution is clean.** Average entry slippage +0.16 %, +0.21 % with market-on-close orders.
+
+## Operations
+
+| Date | Event | Consequence |
+|---|---|---|
+| 12 Oct | Legacy bot reconnects, receives an empty position list and cancels all 20 stops | Rewrite with a reconciliation that can never act on incomplete broker data, see the [README](../README.md#state-management--the-12102026-incident) |
+| 14 / 16 Oct | Two orders reported as cancelled were partly filled | Picked up later by the reconciliation |
+| 22–23 Oct | Legacy bot not running | No scans, no stop updates; broker-side stops stayed active |
+| 27 Oct – 02 Nov | Ten migrated positions gone at the broker without a reported execution | Closed after 13 runs with unknown exit price; `turtlebot import-executions` now backfills it from the IBKR trade export |
+
+The laptop running the bot is shut down every night after the US close. Positions stay protected
+by their GTC stop orders at the broker; the engine reconciles and catches up on a missed stop
+update on the next start.
+
+## Data caveats
+
+* About a third of the per-trade figures (ten exits from the legacy period) were initially
+  estimated from the stop prices in force at the time. Importing the IBKR trade export with
+  `turtlebot import-executions` replaces them with the executed prices.
+* Commissions and interest are only contained in the account value, not in the trade table.
+* The account is in CHF and the positions in USD; a stronger franc lowers the CHF value without
+  any change in the positions.
+
+## What happens next
+
+The bot keeps running unchanged. A fair verdict on win rate, payoff ratio and the difference
+between block 1 and block 2 needs two to three months of closed trades. Planned changes, each with
+a backtest first: exclude takeover targets from allocation, and cap the number of positions per
+country or theme.

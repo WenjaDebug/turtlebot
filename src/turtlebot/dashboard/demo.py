@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from turtlebot.config import PhaseSettings
+from turtlebot.config import PhaseSettings, Settings
 from turtlebot.domain.models import AccountSnapshot, Block, Candidate, Position, PositionStatus
 from turtlebot.persistence.store import DiscrepancyRecord, StateStore
 from turtlebot.timeutil import is_trading_day
@@ -217,3 +217,9 @@ def demo_phases(today: dt.date | None = None) -> list[PhaseSettings]:
         PhaseSettings(label="v1 · legacy bot", start=today - dt.timedelta(days=90)),
         PhaseSettings(label="v2 · engine + reconciliation", start=today - dt.timedelta(days=35)),
     ]
+
+
+def demo_settings(settings: Settings, today: dt.date | None = None) -> Settings:
+    """``settings`` with the demo project phases on the equity chart."""
+    dashboard = settings.dashboard.model_copy(update={"phases": demo_phases(today)})
+    return settings.model_copy(update={"dashboard": dashboard})

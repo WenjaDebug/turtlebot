@@ -7,17 +7,60 @@
 ![mypy](https://img.shields.io/badge/mypy-strict-success)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
+turtlebot scans about 2,200 liquid US stocks every afternoon for 20-day breakouts on heavy volume, buys the strongest ones at the close with a stop at the 10-day low, and trails that stop every morning. It has been trading an IBKR paper account since October 2026. The interesting parts are less the entry rule than everything around it: a research process that tried to break its own results, a reconciliation that survived a real broker incident, and a dashboard that shows the bot against the market without hiding the bad weeks.
+
 > [!WARNING]
 > **Paper-trading and learning project, not investment advice.** The bot only connects to IBKR *paper* accounts (port 7497, account ids starting with `D`) and refuses everything else. Backtest and paper results say nothing about future returns. Use at your own risk.
 
-![Dashboard (light)](docs/screenshots/dashboard-light.png)
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/dashboard-light.png">
+  <img alt="turtlebot dashboard: equity against the S&P 500 with project phases and drawdown, slot grids of both blocks, the open book with cushion to stop, risk panel, assistant and activity feed" src="docs/screenshots/dashboard-dark.png">
+</picture>
 
-<details><summary>Dark theme</summary>
+*Dashboard in demo mode with synthetic data. [Open the live demo](https://wenjadebug.github.io/turtlebot/) in the browser, or run it locally with `turtlebot dashboard --demo`.*
 
-![Dashboard (dark)](docs/screenshots/dashboard-dark.png)
-</details>
+## Results so far
 
-*Screenshots show the built-in demo mode with synthetic data.*
+**IBKR paper account, as of 11 Nov 2026 (US close).** Full period since the first trade, total equity including open positions:
+
+| | |
+|---|---|
+| Net liquidation, 05 Oct → 11 Nov | 999,928 → 976,137 CHF, **−2.4 %** |
+| Since the v2 engine took over (27 Oct) | **+0.9 %** |
+| Max drawdown | −3.7 % (daily), −4.0 % intraday |
+| S&P 500 over the comparable window (02 Oct – 09 Nov) | −3.8 %, bot −2.3 % with a beta of 0.4 |
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/paper-account-dark.png">
+  <img alt="Paper account since the first trade, shaded by project phase" src="docs/img/paper-account-light.png">
+</picture>
+
+Almost the entire loss comes from the first two days, when a deliberately loose test mode verified order routing on the live paper account. The positions opened under the production rules are positive in total, most of it still unrealised, which is how a trend-following system looks in its first weeks. Five weeks prove nothing either way; [docs/results.md](docs/results.md) has the full breakdown by phase, the market comparison and the caveats.
+
+## Try it
+
+No broker account needed for the demo:
+
+```bash
+git clone https://github.com/WenjaDebug/turtlebot.git && cd turtlebot
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e .
+turtlebot dashboard --demo        # http://127.0.0.1:8000
+```
+
+To trade on your own IBKR paper account, follow [docs/setup-ibkr.md](docs/setup-ibkr.md) (TWS settings, configuration, dry runs, going live).
+
+## Documentation
+
+| | |
+|---|---|
+| [Strategy](docs/strategy.md) | The rules, the two blocks and the evidence behind each choice, including ten years of signals |
+| [Research journey](docs/research-journey.md) | From moving-average experiments to the current system: what was tested, what failed, what changed |
+| [Results](docs/results.md) | Paper-trading results by phase, against the market, with known data gaps |
+| [IBKR setup](docs/setup-ibkr.md) | Step-by-step guide from a fresh clone to a bot on a paper account |
+| [Changelog](CHANGELOG.md) | Release notes |
+
+The project was built with [Claude Code](https://claude.com/claude-code) as a pair programmer; the research questions, trading rules and design decisions are mine, and every change was reviewed before it went live.
 
 ---
 
@@ -30,7 +73,7 @@
 | **Execution** | Scan at 15:45 ET, entries as market-on-close (market-on-open after the MOC cutoff), each as a bracket with an attached GTC stop. |
 | **Risk** | 1.5 % of net liquidation per position, margin cushion check (TWS what-if), daily loss kill switch (-2 %), max 10 new entries per block and day. |
 | **State** | SQLite store as the bot's source of truth; every reconciliation with the broker is recorded with its discrepancies. |
-| **Dashboard** | FastAPI REST + WebSocket backend, hand-built frontend: equity & drawdown, live positions with cushion to stop, P&L per block, risk metrics, activity feed and an integrated assistant. |
+| **Dashboard** | FastAPI REST + WebSocket backend, hand-built frontend: equity against the S&P 500 with project phases and drawdown, slot grids per block, live positions with cushion to stop, risk panel with safety guards, activity feed and a read-only assistant (local Claude Code). |
 
 All parameters are configurable (see [`.env.example`](.env.example)); the defaults reproduce the production setup exactly.
 
@@ -105,10 +148,10 @@ The new design prevents both structurally:
 
 ## Setup
 
-Requirements: Python 3.12+, TWS or IB Gateway with API access enabled on the paper port 7497 ("Read-Only API" off), optionally [Claude Code](https://claude.com/claude-code) for the dashboard assistant.
+Requirements: Python 3.12+, TWS or IB Gateway with API access on the paper port 7497, optionally [Claude Code](https://claude.com/claude-code) for the dashboard assistant. The full walkthrough is in [docs/setup-ibkr.md](docs/setup-ibkr.md).
 
 ```bash
-git clone <repo> && cd turtlebot
+git clone https://github.com/WenjaDebug/turtlebot.git && cd turtlebot
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 cp .env.example .env          # adjust if needed; .env is git-ignored
@@ -133,6 +176,7 @@ turtlebot run --dry-run          # full schedule without orders (separate databa
 turtlebot run                    # paper trading - requires TURTLE_TRADING_ENABLED=true
 turtlebot dashboard              # http://127.0.0.1:8000
 turtlebot dashboard --demo       # synthetic data, no account needed
+turtlebot export-demo _site      # static demo for GitHub Pages (synthetic data)
 turtlebot backtest --universe .cache/live/eligible_20261009.json --start 2016-01-01 --end 2026-10-01
 ```
 
@@ -141,7 +185,7 @@ turtlebot backtest --universe .cache/live/eligible_20261009.json --start 2016-01
 The dashboard compares the account curve with a benchmark (SPY daily closes from Yahoo by default; `TURTLE_DASHBOARD__BENCHMARK_SYMBOL=""` turns it off) and can mark project phases on the equity chart:
 
 ```bash
-TURTLE_DASHBOARD__PHASES='[{"label": "v1 legacy bot", "start": "2026-06-24"}, {"label": "v2 engine", "start": "2026-10-06"}]'
+TURTLE_DASHBOARD__PHASES='[{"label": "Test mode", "start": "2026-10-05"}, {"label": "v2 engine", "start": "2026-10-27"}]'
 ```
 
 ### Operating mode
@@ -168,18 +212,18 @@ The import only updates a position if the SELL executions between its entry and 
 ## Development
 
 ```bash
-pytest                 # 260+ tests, ~93 % coverage, never touches TWS (in-memory fake broker)
+pytest                 # 330+ tests, ~93 % coverage, never touches TWS (in-memory fake broker)
 mypy                   # --strict
 ruff check . && black --check .
 ```
 
-CI (GitHub Actions) runs lint, type check and the test matrix on Python 3.12–3.14 for every push.
+CI (GitHub Actions) runs lint, type check and the test matrix on Python 3.12–3.14 for every push. A second, manually triggered workflow publishes the static demo dashboard to GitHub Pages.
 
 Test highlights: regression test that the signal is identical to the legacy implementation; reconciliation incident replay; partial fills (entry and stop), cancelled partial entries, lost stops, TWS rejecting a stop modification, disconnects with backoff and alerts, empty/stale/malformed market data, job retries, watchdog timeouts, backtest stop logic checked against the legacy research backtest.
 
 ## Legacy code
 
-`legacy/` keeps the original monolithic bot (v1) and the research scripts that led to the strategy, for traceability. Nothing in `src/` imports from it.
+`legacy/` keeps the original monolithic bot (v1) and the research scripts that led to the strategy, for traceability; [docs/research-journey.md](docs/research-journey.md) walks through them in order. Nothing in `src/` imports from it.
 
 ## License
 
