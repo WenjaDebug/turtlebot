@@ -60,7 +60,7 @@ names fell hard while the typical stock rose.
 | Window | Bot | S&P 500 (cap-weighted) |
 |---|---|---|
 | **Production rules**, entries 13 Oct – 09 Nov | **+0.6 %** (+6,700 USD) | **−3.3 %** |
-| **v2 engine**, 27 Oct – 10 Nov, in USD | **+0.6 %** | **−1.9 %** |
+| **v2 engine**, 27 Oct – 11 Nov, in USD | **+0.4 %** | **−0.6 %** |
 | Whole account incl. test mode (functional test), 02 Oct – 09 Nov | −2.3 % | −2.2 % |
 
 Other indices, 02 Oct – 09 Nov 2026:
