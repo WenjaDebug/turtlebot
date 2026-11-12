@@ -14,9 +14,10 @@ judge a trend-following strategy, so treat this as a progress report, not a trac
 
 | | Value | Note |
 |---|---|---|
+| **Trades under the production rules** | **+6,700 USD** | entries from 13 Oct, test-mode trades excluded, as of 09 Nov (table below) |
+| **Account since the v2 engine (27 Oct)** | **+0.9 %** | 967,287 → 976,137 CHF |
 | Net liquidation 05 Oct → 11 Nov | 999,928 → 976,137 CHF | as reported by TWS, includes open positions |
-| **Total return** | **−2.4 %** | realised and unrealised P&L, after commissions, in CHF |
-| Since the v2 engine went live (27 Oct) | **+0.9 %** | 967,287 → 976,137 CHF |
+| Total return, whole account incl. test mode | −2.4 % | realised and unrealised P&L, after commissions, in CHF |
 | Max drawdown | −3.7 % (daily) / −4.0 % (intraday low, 06 Nov) | |
 | Volatility, annualised | 10.6 % | S&P 500 over the same days: 20.6 % |
 | Beta to the S&P 500 | 0.40 | correlation 0.79, 26 trading days |

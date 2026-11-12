@@ -21,21 +21,21 @@ turtlebot scans about 2,200 liquid US stocks every afternoon for 20-day breakout
 
 ## Results so far
 
-**IBKR paper account, as of 11 Nov 2026 (US close).** Full period since the first trade, total equity including open positions:
+**IBKR paper account.** The first two trading days ran a deliberately loose *test mode* (10-day breakout, 1.3× volume, hourly scans) whose only job was to prove order routing on the live paper account. Those trades follow different rules, so they are reported separately and not counted as strategy results:
 
-| | |
+| | Result |
 |---|---|
-| Net liquidation, 05 Oct → 11 Nov | 999,928 → 976,137 CHF, **−2.4 %** |
-| Since the v2 engine took over (27 Oct) | **+0.9 %** |
-| Max drawdown | −3.7 % (daily), −4.0 % intraday |
-| S&P 500 over the comparable window (02 Oct – 09 Nov) | −3.8 %, bot −2.3 % with a beta of 0.4 |
+| **All trades under the production rules** (entries from 13 Oct, test-mode trades excluded) | **+6,700 USD**, realised and unrealised, as of 09 Nov |
+| **Account since the v2 engine took over** (27 Oct → 11 Nov) | **+0.9 %** |
+| S&P 500 over the comparable window (02 Oct – 09 Nov) | −3.8 % |
+| Bot exposure and beta | 37 % invested on average, beta 0.4 |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/paper-account-dark.png">
   <img alt="Paper account since the first trade, shaded by project phase" src="docs/img/paper-account-light.png">
 </picture>
 
-Almost the entire loss comes from the first two days, when a deliberately loose test mode verified order routing on the live paper account. The positions opened under the production rules are positive in total, most of it still unrealised, which is how a trend-following system looks in its first weeks. Five weeks prove nothing either way; [docs/results.md](docs/results.md) has the full breakdown by phase, the market comparison and the caveats.
+The chart is the full account since the very first order, test mode included (−2.4 % in total by 11 Nov, almost all of it from the test-mode positions). Five weeks prove nothing either way: most of the gains are still open positions, which is how a trend-following system looks early on. [docs/results.md](docs/results.md) has the breakdown by phase, the market comparison and the caveats.
 
 ## Try it
 
