@@ -23,12 +23,11 @@ turtlebot scans about 2,200 liquid US stocks every afternoon for 20-day breakout
 
 **IBKR paper account.** The first two trading days ran a deliberately loose *test mode* (10-day breakout, 1.3× volume, hourly scans) whose only job was to prove order routing on the live paper account. Those trades follow different rules, so they are reported separately and not counted as strategy results:
 
-| | Result |
-|---|---|
-| **All trades under the production rules** (entries from 13 Oct, test-mode trades excluded) | **+6,700 USD**, realised and unrealised, as of 09 Nov |
-| **Account since the v2 engine took over** (27 Oct → 11 Nov) | **+0.9 %** |
-| S&P 500 over the comparable window (02 Oct – 09 Nov) | −3.8 % |
-| Bot exposure and beta | 37 % invested on average, beta 0.4 |
+| | Bot | S&P 500 |
+|---|---|---|
+| **All trades under the production rules** (entries 13 Oct – 09 Nov, test-mode trades excluded) | **+0.6 %** (+6,700 USD, realised and unrealised) | −3.3 % |
+| **Since the v2 engine took over** (27 Oct – 10 Nov, in USD) | **+0.6 %** | −1.9 % |
+| Exposure and beta | 37 % invested on average, beta 0.4 | |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/paper-account-dark.png">
