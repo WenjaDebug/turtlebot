@@ -15,11 +15,11 @@ judge a trend-following strategy, so treat this as a progress report, not a trac
 | | Value | Note |
 |---|---|---|
 | **Trades under the production rules** | **+6,700 USD** | entries from 13 Oct, test-mode trades excluded, as of 09 Nov (table below) |
-| **Account since the v2 engine (27 Oct)** | **+0.9 %** | 967,287 → 976,137 CHF |
+| **Account since the v2 engine (27 Oct)** | **+0.9 %** in CHF, +0.4 % in USD | 967,287 → 976,137 CHF; the franc weakened on 11 Nov |
 | Net liquidation 05 Oct → 11 Nov | 999,928 → 976,137 CHF | as reported by TWS, includes open positions |
 | Total return, whole account incl. test mode | −2.4 % | realised and unrealised P&L, after commissions, in CHF |
 | Max drawdown | −3.7 % (daily) / −4.0 % (intraday low, 06 Nov) | |
-| Volatility, annualised | 10.6 % | S&P 500 over the same days: 20.6 % |
+| Volatility, annualised | 10.6 % | S&P 500 over the same days: 19.7 % |
 | Beta to the S&P 500 | 0.40 | correlation 0.79, 26 trading days |
 | Average exposure | 37 % (max 62 %) | 1.5 % of equity per position, up to 40 positions |
 | Positions | 66 (26 closed, 40 open) | |
@@ -57,22 +57,30 @@ on this page uses total equity, realised plus unrealised.
 The weeks from early October to early November were a split market: a handful of mega-cap tech
 names fell hard while the typical stock rose.
 
-| 02 Oct – 09 Nov 2026 | Return |
+| Window | Bot | S&P 500 (cap-weighted) |
+|---|---|---|
+| **Production rules**, entries 13 Oct – 09 Nov | **+0.6 %** (+6,700 USD) | **−3.3 %** |
+| **v2 engine**, 27 Oct – 11 Nov, in USD | **+0.4 %** | **−0.6 %** |
+| Whole account incl. test mode (functional test), 02 Oct – 09 Nov | −2.3 % | −2.2 % |
+
+Other indices, 02 Oct – 09 Nov 2026:
+
+| Index | Return |
 |---|---|
-| Bot (strategy, USD) | −2.3 % |
-| S&P 500, cap-weighted | −3.8 % |
-| Nasdaq-100 | −10.4 % |
-| S&P 500, equal-weighted | +5.3 % |
-| S&P 400 / S&P 600 | about +0.6 % each |
-| Bot universe, equal-weighted | −4.8 % |
+| S&P 500, equal-weighted | +5.7 % |
+| S&P 400, cap-weighted | +1.3 % |
+| S&P 600, cap-weighted | +1.6 % |
 
-*Index returns were rebuilt from the constituent prices in the bot's cache (correlation 0.99 with
-SPY where both exist), because index data was not available for the full window.*
+*Index returns were rebuilt from the constituents' closing prices in the bot's cache, weighted by
+market cap and counting dual share classes (GOOG/GOOGL, FOX/FOXA, NWS/NWSA) once. Over the last
+23 days for which SPY itself is cached, the rebuilt S&P 500 returned −0.77 % against −0.87 % for
+SPY (daily correlation 0.994), so expect an error of a few tenths of a percentage point.*
 
-With a beta of 0.4 the bot lost less than the S&P 500, but mainly because it was less than half
-invested. Adjusted for that lower market exposure it trailed a passive position with the same risk
-by roughly 0.5 to 1 percentage point. None of these differences is statistically meaningful over
-26 trading days.
+Under the production rules the bot gained while the S&P 500 fell, and it did so with less than
+half of the market's exposure (beta 0.4). The production-rules return is the trades' P&L relative
+to the account value. Including the two test-mode days, whose only purpose was to check order
+routing, the account finished level with the index; those test trades alone cost about 3 % of
+the account. None of these differences is statistically meaningful over a few weeks.
 
 ## What the data does say
 
