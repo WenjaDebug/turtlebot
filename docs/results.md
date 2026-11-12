@@ -12,16 +12,25 @@ judge a trend-following strategy, so treat this as a progress report, not a trac
 
 ## Headline
 
+Strategy results under the production rules. The two test-mode days at the start (05–06 Oct) were
+a functional test of order routing with different rules and are not counted here; they are shown
+separately below.
+
 | | Value | Note |
 |---|---|---|
-| **Trades under the production rules** | **+6,700 USD** | entries from 13 Oct, test-mode trades excluded, as of 09 Nov (table below) |
-| **Account since the v2 engine (27 Oct)** | **+0.9 %** in CHF, +0.4 % in USD | 967,287 → 976,137 CHF; the franc weakened on 11 Nov |
-| Net liquidation 05 Oct → 11 Nov | 999,928 → 976,137 CHF | as reported by TWS, includes open positions |
-| Total return, whole account incl. test mode | −2.4 % | realised and unrealised P&L, after commissions, in CHF |
+| **Trades under the production rules** | **+9,300 USD** (+0.8 %) | entries from 13 Oct, realised and unrealised, to 11 Nov |
+| S&P 500 over the same window | −2.4 % | 13 Oct close → 11 Nov close |
+| **Account since the v2 engine (27 Oct)** | **+0.9 %** | 967,287 → 976,137 CHF; S&P 500 over the same days −0.6 % |
+| Average exposure | 37 % (max 62 %) | 1.5 % of equity per position, up to 40 positions |
+| Beta to the S&P 500 | 0.40 | correlation 0.79, 26 trading days |
+
+### Whole account, including the test-mode days
+
+| | Value | Note |
+|---|---|---|
+| Net liquidation 05 Oct → 11 Nov | 999,928 → 976,137 CHF (−2.4 %) | as reported by TWS, after commissions; test-mode trades −35,600 USD |
 | Max drawdown | −3.7 % (daily) / −4.0 % (intraday low, 06 Nov) | |
 | Volatility, annualised | 10.6 % | S&P 500 over the same days: 19.7 % |
-| Beta to the S&P 500 | 0.40 | correlation 0.79, 26 trading days |
-| Average exposure | 37 % (max 62 %) | 1.5 % of equity per position, up to 40 positions |
 | Positions | 66 (26 closed, 40 open) | |
 
 Raw data: [`data/paper_account.csv`](data/paper_account.csv). The chart is rendered by
@@ -34,7 +43,7 @@ has gaps; from 27 Oct on, the engine records a snapshot on every loop.
 Almost the whole loss comes from the first two days, when the bot still ran in **test mode**:
 a looser signal (10-day breakout, 1.3× volume, hourly intraday scans) whose only purpose was
 to prove that order routing, fills and stops work end to end. Everything bought since then
-under the production rules is roughly flat to positive in total.
+under the production rules is in profit in total.
 
 | Phase | Positions | Closed (winners) | Open (in profit) | Realised | Unrealised | Total |
 |---|---|---|---|---|---|---|
@@ -44,7 +53,9 @@ under the production rules is roughly flat to positive in total.
 | **Total** | 64 | 26 (4) | 38 (23) | −55,500 USD | +26,600 USD | **−28,900 USD** |
 
 *Per-trade figures in USD, reconstructed from entry and exit prices as of 09 Nov, before
-commissions. The CHF account value above is the authoritative number; both give −2.3 % on 09 Nov.*
+commissions. The CHF account value above is the authoritative number; both give −2.3 % on 09 Nov.
+By the 11 Nov close the production-rules trades stood at +9,300 USD and the test-mode trades at
+−35,600 USD.*
 
 **Why realised P&L alone is misleading here.** A breakout system cuts losers quickly and lets
 winners run, so for weeks the closed trades are mostly the losers. Closed-trade statistics
@@ -59,28 +70,27 @@ names fell hard while the typical stock rose.
 
 | Window | Bot | S&P 500 (cap-weighted) |
 |---|---|---|
-| **Production rules**, entries 13 Oct – 09 Nov | **+0.6 %** (+6,700 USD) | **−3.3 %** |
-| **v2 engine**, 27 Oct – 11 Nov, in USD | **+0.4 %** | **−0.6 %** |
-| Whole account incl. test mode (functional test), 02 Oct – 09 Nov | −2.3 % | −2.2 % |
+| **Production rules**, entries 13 Oct – 11 Nov | **+0.8 %** (+9,300 USD) | **−2.4 %** |
+| **Account since the v2 engine**, 27 Oct – 11 Nov | **+0.9 %** | **−0.6 %** |
 
-Other indices, 02 Oct – 09 Nov 2026:
+Other indices, 02 Oct – 11 Nov 2026:
 
 | Index | Return |
 |---|---|
-| S&P 500, equal-weighted | +5.7 % |
-| S&P 400, cap-weighted | +1.3 % |
-| S&P 600, cap-weighted | +1.6 % |
+| S&P 500, equal-weighted | +6.5 % |
+| S&P 400, cap-weighted | +1.7 % |
+| S&P 600, cap-weighted | +2.0 % |
 
 *Index returns were rebuilt from the constituents' closing prices in the bot's cache, weighted by
 market cap and counting dual share classes (GOOG/GOOGL, FOX/FOXA, NWS/NWSA) once. Over the last
 23 days for which SPY itself is cached, the rebuilt S&P 500 returned −0.77 % against −0.87 % for
 SPY (daily correlation 0.994), so expect an error of a few tenths of a percentage point.*
 
-Under the production rules the bot gained while the S&P 500 fell, and it did so with less than
-half of the market's exposure (beta 0.4). The production-rules return is the trades' P&L relative
-to the account value. Including the two test-mode days, whose only purpose was to check order
-routing, the account finished level with the index; those test trades alone cost about 3 % of
-the account. None of these differences is statistically meaningful over a few weeks.
+The bot gained while the S&P 500 fell, with less than half of the market's exposure (beta 0.4).
+The production-rules figure is the trades' P&L in USD before commissions, relative to the account
+of about 1.2 million USD. The test-mode trades are not part of it; the whole account including
+them stood at −2.4 % against −1.3 % for the index. Over a few weeks none of these differences is
+statistically meaningful.
 
 ## What the data does say
 
@@ -112,9 +122,9 @@ update on the next start.
 
 ## Data caveats
 
-* About a third of the per-trade figures (ten exits from the legacy period) were initially
-  estimated from the stop prices in force at the time. Importing the IBKR trade export with
-  `turtlebot import-executions` replaces them with the executed prices.
+* Ten exits from the legacy period have no reported execution price and are estimated from the
+  stop prices in force at the time. Importing the IBKR trade export with
+  `turtlebot import-executions` will replace them with the executed prices.
 * Commissions and interest are only contained in the account value, not in the trade table.
 * The account is in CHF and the positions in USD; a stronger franc lowers the CHF value without
   any change in the positions.
