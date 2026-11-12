@@ -34,7 +34,7 @@ turtlebot scans about 2,200 liquid US stocks every afternoon for 20-day breakout
   <img alt="Paper account since the first trade, shaded by project phase" src="docs/img/paper-account-light.png">
 </picture>
 
-The chart is the full account since the very first order, test mode included (−2.4 % in total by 11 Nov, almost all of it from the test-mode positions). Five weeks prove nothing either way: most of the gains are still open positions, which is how a trend-following system looks early on. [docs/results.md](docs/results.md) has the breakdown by phase, the market comparison and the caveats.
+The chart is the full account since the very first order, including the two test-mode days at the start. Five weeks prove nothing either way: most of the gains are still open positions, which is how a trend-following system looks early on. [docs/results.md](docs/results.md) has the breakdown by phase, the market comparison and the caveats.
 
 ## Try it
 
