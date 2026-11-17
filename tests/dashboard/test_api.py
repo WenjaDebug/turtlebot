@@ -78,7 +78,7 @@ def client(populated: StateStore, chat: EchoChat) -> Iterator[TestClient]:
         chat=chat,
         clock=MutableClock(NOW + dt.timedelta(seconds=30)),
     )
-    with TestClient(app) as c:
+    with TestClient(app, base_url="http://localhost") as c:
         yield c
 
 
@@ -134,7 +134,7 @@ def test_equity_trades_signals_events_reconciliations(client: TestClient) -> Non
 
 
 def test_websocket_pushes_snapshot_and_updates(client: TestClient, populated: StateStore) -> None:
-    with client.websocket_connect("/api/v1/stream") as ws:
+    with client.websocket_connect("ws://localhost/api/v1/stream") as ws:
         first = ws.receive_json()
         assert first["type"] == "snapshot"
         assert {p["symbol"] for p in first["positions"]} == {"AAA", "BBB", "PEND"}
@@ -155,7 +155,7 @@ def test_chat_validation_and_errors(populated: StateStore) -> None:
     app = create_app(
         Settings(_env_file=None), store=populated, quotes=StaticQuotes({}), chat=UnavailableChat()
     )
-    with TestClient(app) as c:
+    with TestClient(app, base_url="http://localhost") as c:
         assert c.post("/api/v1/chat", json={"message": ""}).status_code == 422
         bad_session = {"message": "hi", "session_id": "../../etc"}
         assert c.post("/api/v1/chat", json=bad_session).status_code == 422
@@ -229,3 +229,35 @@ def test_demo_seed(tmp_path: Path) -> None:
     finally:
         store.close()
     seed_demo_store(db, today=dt.date(2026, 10, 16))  # idempotent re-seed
+
+
+def test_foreign_host_header_is_rejected(client: TestClient) -> None:
+    # A DNS-rebinding page reaches the server under its own host name.
+    res = client.get("/api/v1/positions", headers={"host": "evil.example"})
+    assert res.status_code == 400
+
+
+def test_websocket_from_foreign_origin_is_refused(client: TestClient) -> None:
+    from starlette.websockets import WebSocketDisconnect
+
+    with (
+        pytest.raises(WebSocketDisconnect) as exc,
+        client.websocket_connect(
+            "ws://localhost/api/v1/stream", headers={"origin": "https://evil.example"}
+        ) as ws,
+    ):
+        ws.receive_text()
+    assert exc.value.code == 1008
+    with client.websocket_connect(
+        "ws://localhost/api/v1/stream", headers={"origin": "http://localhost:8000"}
+    ) as ws:
+        assert ws.receive_json()["overview"]
+
+
+def test_chat_is_rate_limited(populated: StateStore, chat: EchoChat) -> None:
+    settings = Settings(_env_file=None)
+    settings.dashboard.chat_max_per_minute = 2
+    app = create_app(settings, store=populated, quotes=StaticQuotes({}), chat=chat)
+    with TestClient(app, base_url="http://localhost") as c:
+        codes = [c.post("/api/v1/chat", json={"message": "hi"}).status_code for _ in range(3)]
+    assert codes == [200, 200, 429]

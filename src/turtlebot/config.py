@@ -247,6 +247,11 @@ class DashboardSettings(BaseModel):
     host: str = "127.0.0.1"
     port: int = Field(8000, ge=1, le=65535)
     cors_origins: list[str] = Field(default_factory=list)
+    allowed_hosts: list[str] = Field(
+        default_factory=lambda: ["127.0.0.1", "localhost", "[::1]"],
+        description="Host headers the server answers to (blocks DNS rebinding).",
+    )
+    chat_max_per_minute: int = Field(6, ge=1, description="Rate limit for the chat endpoint.")
     push_interval_s: float = Field(1.0, gt=0, description="DB change polling for the WebSocket.")
     price_refresh_s: float = Field(60.0, gt=0, description="Quote cache TTL.")
     chat_enabled: bool = True

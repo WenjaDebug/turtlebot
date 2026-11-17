@@ -22,6 +22,7 @@ First public release: the `turtlebot` package that has been trading the IBKR pap
 ### Changed
 
 - The nightly TWS reset is treated as an expected disconnect, not an error.
+- Dashboard hardening: allowed Host headers, same-origin check for the WebSocket, rate limit for the assistant, and a refusal to serve the assistant on a non-loopback address. See `SECURITY.md`.
 
 ### Legacy
 
