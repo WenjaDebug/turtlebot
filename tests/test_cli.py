@@ -119,3 +119,10 @@ def test_reconcile_only_requires_dry_run(
     get_settings.cache_clear()
     assert cli.main(["run", "--reconcile-only"]) == cli.EXIT_REFUSED
     assert "--reconcile-only is only available with --dry-run" in capsys.readouterr().err
+
+
+def test_dashboard_refuses_assistant_on_public_interface(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert cli.main(["dashboard", "--host", "0.0.0.0"]) == cli.EXIT_REFUSED
+    assert "CHAT_ENABLED=false" in capsys.readouterr().err

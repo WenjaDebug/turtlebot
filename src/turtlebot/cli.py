@@ -37,6 +37,7 @@ log = logging.getLogger("turtlebot.cli")
 
 FILE_LIMIT_TARGET = 10_240  # yfinance needs ~300-500 handles for threaded downloads
 EXIT_REFUSED = 2
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
 
 # ------------------------------------------------------------------------------ helpers
@@ -332,6 +333,14 @@ def cmd_dashboard(args: argparse.Namespace, settings: Settings) -> int:
     from turtlebot.dashboard.demo import demo_benchmark, demo_settings, seed_demo_store
     from turtlebot.dashboard.quotes import StaticBenchmark, StaticQuotes
 
+    host = args.host or settings.dashboard.host
+    if host not in LOOPBACK_HOSTS and settings.dashboard.chat_enabled:
+        sys.stderr.write(
+            f"Refusing to serve the assistant on {host}: it runs your local Claude Code with "
+            "read access to this machine. Bind to 127.0.0.1 or set "
+            "TURTLE_DASHBOARD__CHAT_ENABLED=false.\n"
+        )
+        return EXIT_REFUSED
     if args.demo:
         db = settings.paths.data_dir / "demo.db"
         app = create_app(
@@ -343,9 +352,7 @@ def cmd_dashboard(args: argparse.Namespace, settings: Settings) -> int:
         )
     else:
         app = create_app(settings, db_path=settings.paths.db_path)
-    uvicorn.run(
-        app, host=args.host or settings.dashboard.host, port=args.port or settings.dashboard.port
-    )
+    uvicorn.run(app, host=host, port=args.port or settings.dashboard.port)
     return 0
 
 

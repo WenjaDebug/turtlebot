@@ -16,9 +16,11 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Final
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
@@ -175,6 +177,9 @@ def create_app(
     )
     app.state.repo = repo
     app.state.hub = hub
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=dash.allowed_hosts)
+    chat_lock = asyncio.Lock()
+    chat_calls: list[float] = []
     if dash.cors_origins:
         app.add_middleware(
             CORSMiddleware,
@@ -234,6 +239,15 @@ def create_app(
 
     @app.post("/api/v1/chat")
     async def ask(request: ChatRequest) -> ChatResponse:
+        now = time.monotonic()
+        chat_calls[:] = [t for t in chat_calls if now - t < 60.0]
+        if len(chat_calls) >= dash.chat_max_per_minute or chat_lock.locked():
+            raise HTTPException(status_code=429, detail="too many questions, try again shortly")
+        chat_calls.append(now)
+        async with chat_lock:
+            return await _answer(request)
+
+    async def _answer(request: ChatRequest) -> ChatResponse:
         context = await run_in_threadpool(repo.chat_context)
         try:
             answer, session = await chat_service.ask(request.message, context, request.session_id)
@@ -244,6 +258,9 @@ def create_app(
     # ------------------------------------------------------------------ WebSocket
     @app.websocket("/api/v1/stream")
     async def stream(ws: WebSocket) -> None:
+        if not _origin_allowed(ws.headers.get("origin"), dash.allowed_hosts, dash.cors_origins):
+            await ws.close(code=1008)  # cross-site WebSocket hijacking guard
+            return
         await hub.register(ws)
         try:
             while True:
@@ -258,3 +275,13 @@ def create_app(
     if STATIC_DIR.exists():
         app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
     return app
+
+
+def _origin_allowed(origin: str | None, allowed_hosts: list[str], cors_origins: list[str]) -> bool:
+    """Accept a WebSocket only from the dashboard's own origin (browsers always send one)."""
+    if origin is None:
+        return True  # non-browser client, e.g. a script on the same machine
+    if origin in cors_origins or "*" in allowed_hosts:
+        return True
+    host = urlsplit(origin).hostname
+    return host is not None and (host in allowed_hosts or f"[{host}]" in allowed_hosts)
